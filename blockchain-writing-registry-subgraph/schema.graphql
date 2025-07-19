@@ -1,0 +1,18 @@
+type Proof @entity {
+  id: ID!
+  hash: String!
+  title: String!
+  license: String!
+  twitterHandle: String!
+  timestamp: BigInt!
+  creator: Creator!
+  blockNumber: BigInt!
+  transactionHash: String!
+}
+
+type Creator @entity {
+  id: ID!
+  address: String!
+  proofs: [Proof!]! @derivedFrom(field: "creator")
+  proofCount: Int!
+} 
