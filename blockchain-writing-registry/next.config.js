@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    appDir: true,
+    // appDir: true, // Removed as it's enabled by default in Next.js 14+
   },
   webpack: (config) => {
     config.resolve.fallback = {

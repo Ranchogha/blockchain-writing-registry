@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useAccount, useContractWrite, useWaitForTransaction } from 'wagmi'
+import { useAccount } from 'wagmi'
+import { writeContract } from 'wagmi/actions'
+import { config } from './providers'
 import { parseEther } from 'viem'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,16 +56,9 @@ export function ContentSubmission() {
   const [license, setLicense] = useState('')
   const [twitterHandle, setTwitterHandle] = useState('')
   const [contentHash, setContentHash] = useState('')
-
-  const { write: registerProof, data: hash } = useContractWrite({
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    abi: CONTRACT_ABI,
-    functionName: 'registerProof',
-  })
-
-  const { isLoading, isSuccess } = useWaitForTransaction({
-    hash: hash,
-  })
+  const [txHash, setTxHash] = useState('')
+  const [isWriting, setIsWriting] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
 
   const generateHash = (text: string) => {
     if (!text.trim()) return ''
@@ -91,12 +86,21 @@ export function ContentSubmission() {
     }
 
     try {
-      registerProof({
+      setIsWriting(true)
+      setIsSuccess(false)
+      const tx = await writeContract(config, {
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: 'registerProof',
         args: [contentHash, title, license, twitterHandle],
       })
+      setTxHash(tx)
+      setIsSuccess(true)
     } catch (error) {
       console.error('Error registering proof:', error)
       alert('Error registering proof. Please try again.')
+    } finally {
+      setIsWriting(false)
     }
   }
 
@@ -179,10 +183,11 @@ export function ContentSubmission() {
 
           <Button
             type="submit"
-            disabled={!isConnected || isLoading || !content.trim() || !title.trim() || !license}
+            variant="orange"
+            disabled={!isConnected || isWriting || !content.trim() || !title.trim() || !license}
             className="w-full"
           >
-            {isLoading ? (
+            {isWriting ? (
               <div className="flex items-center space-x-2">
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                 <span>Registering...</span>
@@ -195,13 +200,13 @@ export function ContentSubmission() {
             )}
           </Button>
 
-          {isSuccess && (
+          {isSuccess && txHash && (
             <div className="p-4 bg-green-50 border border-green-200 rounded-md">
               <p className="text-green-800">
                 Content successfully registered on Camp Network!
               </p>
               <p className="text-sm text-green-600 mt-1">
-                Transaction Hash: {hash}
+                Transaction Hash: {txHash}
               </p>
             </div>
           )}

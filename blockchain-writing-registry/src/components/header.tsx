@@ -27,7 +27,7 @@ export function Header() {
                   {address?.slice(0, 6)}...{address?.slice(-4)}
                 </span>
                 <Button
-                  variant="outline"
+                  variant="black"
                   size="sm"
                   onClick={() => disconnect()}
                   className="flex items-center space-x-2"
@@ -38,16 +38,16 @@ export function Header() {
               </div>
             ) : (
               <div className="flex items-center space-x-2">
-                {connectors.map((connector) => (
+                {connectors[0] && (
                   <Button
-                    key={connector.id}
-                    onClick={() => connect({ connector })}
+                    variant="black"
+                    onClick={() => connect({ connector: connectors[0] })}
                     className="flex items-center space-x-2"
                   >
                     <Wallet className="h-4 w-4" />
                     <span>Connect Wallet</span>
                   </Button>
-                ))}
+                )}
               </div>
             )}
           </div>

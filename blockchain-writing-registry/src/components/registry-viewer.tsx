@@ -96,7 +96,7 @@ export function RegistryViewer() {
     abi: CONTRACT_ABI,
     functionName: 'isHashRegistered',
     args: [currentHash],
-    enabled: currentHash.length === 66, // SHA-256 hash length
+    query: { enabled: currentHash.length === 66 },
   })
 
   const { data: proof, isLoading } = useContractRead({
@@ -104,7 +104,7 @@ export function RegistryViewer() {
     abi: CONTRACT_ABI,
     functionName: 'getProof',
     args: [currentHash],
-    enabled: isRegistered === true,
+    query: { enabled: isRegistered === true },
   })
 
   const handleSearch = () => {
@@ -116,6 +116,8 @@ export function RegistryViewer() {
   const formatTimestamp = (timestamp: bigint) => {
     return new Date(Number(timestamp) * 1000).toLocaleString()
   }
+
+  const proofTyped = proof as Proof | undefined;
 
   return (
     <Card className="w-full">
@@ -170,26 +172,26 @@ export function RegistryViewer() {
                 </div>
               )}
 
-              {proof && (
+              {proofTyped && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center space-x-2">
                       <FileText className="h-5 w-5" />
-                      <span>{proof.title}</span>
+                      <span>{proofTyped.title}</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">License</Label>
-                        <p className="text-sm text-gray-600">{proof.license}</p>
+                        <p className="text-sm text-gray-600">{proofTyped.license}</p>
                       </div>
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Creator</Label>
                         <div className="flex items-center space-x-2">
                           <User className="h-4 w-4 text-gray-500" />
                           <code className="text-sm font-mono text-gray-700">
-                            {proof.creator}
+                            {proofTyped.creator}
                           </code>
                         </div>
                       </div>
@@ -200,16 +202,16 @@ export function RegistryViewer() {
                       <div className="flex items-center space-x-2">
                         <Calendar className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          {formatTimestamp(proof.timestamp)}
+                          {formatTimestamp(proofTyped.timestamp)}
                         </span>
                       </div>
                     </div>
 
-                    {proof.twitterHandle && (
+                    {proofTyped.twitterHandle && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Twitter Handle</Label>
                         <p className="text-sm text-blue-600">
-                          @{proof.twitterHandle}
+                          @{proofTyped.twitterHandle}
                         </p>
                       </div>
                     )}

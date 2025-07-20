@@ -1,15 +1,15 @@
 'use client'
 
-import { WagmiConfig, createConfig, configureChains } from 'wagmi'
+import { WagmiProvider, createConfig, http } from 'wagmi'
 import { mainnet, polygon } from 'wagmi/chains'
-import { publicProvider } from 'wagmi/providers/public'
-import { MetaMaskConnector } from 'wagmi/connectors/metaMask'
-import { WalletConnectConnector } from 'wagmi/connectors/walletConnect'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { metaMask, walletConnect } from 'wagmi/connectors'
 
 // Camp Network (BaseCAMP) configuration
 const campNetwork = {
   id: 123420001114,
-  name: 'Camp Network BaseCAMP',
+  name: 'basecamp',
   network: 'basecamp',
   nativeCurrency: {
     decimals: 18,
@@ -35,28 +35,31 @@ const campNetwork = {
   },
 } as const
 
-// Configure chains & providers
-const { chains, publicClient, webSocketPublicClient } = configureChains(
-  [campNetwork, mainnet, polygon],
-  [publicProvider()]
-)
-
 // Set up wagmi config
-const config = createConfig({
-  autoConnect: true,
+export const config = createConfig({
+  chains: [campNetwork, mainnet, polygon],
   connectors: [
-    new MetaMaskConnector({ chains }),
-    new WalletConnectConnector({
-      chains,
-      options: {
-        projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
-      },
+    metaMask(),
+    walletConnect({
+      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
     }),
   ],
-  publicClient,
-  webSocketPublicClient,
+  transports: {
+    [campNetwork.id]: http(),
+    [mainnet.id]: http(),
+    [polygon.id]: http(),
+  },
 })
 
+const queryClient = new QueryClient()
+
 export function Providers({ children }: { children: React.ReactNode }) {
-  return <WagmiConfig config={config}>{children}</WagmiConfig>
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
+    </WagmiProvider>
+  )
 } 
