@@ -104,11 +104,8 @@ export function ContentSubmission() {
       }
       const meta = {
         title,
-        license,
         contentHash,
-        content,
-        twitter: twitterData,
-        twitterHandle,
+        content
       };
       const licence = {
         price: 0n,
