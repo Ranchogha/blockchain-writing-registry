@@ -6,9 +6,9 @@ dataSources:
     name: WritingRegistry
     network: camp-network-basecamp
     source:
-      address: "0x0000000000000000000000000000000000000000"  # Replace with your deployed contract address
+      address: "0xb9C7cd7158805B03A8ADc999F6C08933E51BD97d"  # Replace with your deployed contract address
       abi: WritingRegistry
-      startBlock: 0  # Replace with the block number when you deploy your contract
+      startBlock: 13968554  # Replace with the block number when you deploy your contract
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9

@@ -1,123 +1,48 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useContractRead } from 'wagmi'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Search, Hash, Calendar, User, FileText } from 'lucide-react'
-
-// Contract ABI for reading
-const CONTRACT_ABI = [
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "hash",
-        "type": "string"
-      }
-    ],
-    "name": "getProof",
-    "outputs": [
-      {
-        "components": [
-          {
-            "internalType": "string",
-            "name": "title",
-            "type": "string"
-          },
-          {
-            "internalType": "string",
-            "name": "license",
-            "type": "string"
-          },
-          {
-            "internalType": "string",
-            "name": "twitterHandle",
-            "type": "string"
-          },
-          {
-            "internalType": "uint256",
-            "name": "timestamp",
-            "type": "uint256"
-          },
-          {
-            "internalType": "address",
-            "name": "creator",
-            "type": "address"
-          }
-        ],
-        "internalType": "struct WritingRegistry.Proof",
-        "name": "",
-        "type": "tuple"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "hash",
-        "type": "string"
-      }
-    ],
-    "name": "isHashRegistered",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  }
-]
-
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '0x...'
-
-interface Proof {
-  title: string
-  license: string
-  twitterHandle: string
-  timestamp: bigint
-  creator: string
-}
+import { useState } from 'react';
+import { useAuth } from '@campnetwork/origin/react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Search, Hash, Calendar, User, FileText } from 'lucide-react';
+import { fetchUserByUsername } from '@/lib/utils';
 
 export function RegistryViewer() {
-  const [searchHash, setSearchHash] = useState('')
-  const [currentHash, setCurrentHash] = useState('')
+  const { origin } = useAuth();
+  const [input, setInput] = useState('');
+  const [nfts, setNfts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const { data: isRegistered } = useContractRead({
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    abi: CONTRACT_ABI,
-    functionName: 'isHashRegistered',
-    args: [currentHash],
-    query: { enabled: currentHash.length === 66 },
-  })
-
-  const { data: proof, isLoading } = useContractRead({
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    abi: CONTRACT_ABI,
-    functionName: 'getProof',
-    args: [currentHash],
-    query: { enabled: isRegistered === true },
-  })
-
-  const handleSearch = () => {
-    if (searchHash.trim()) {
-      setCurrentHash(searchHash.trim())
+  const handleSearch = async () => {
+    if (!origin || !input.trim()) return;
+    setIsLoading(true);
+    setError('');
+    setNfts([]);
+    try {
+      const uploads = await origin.getOriginUploads();
+      let filtered: any[] = [];
+      if (input.startsWith('@')) {
+        // Twitter handle search
+        filtered = uploads.filter((u: any) =>
+          u.twitterHandle?.toLowerCase() === input.trim().toLowerCase().replace('@', '')
+        );
+      } else {
+        // Wallet address search
+        filtered = uploads.filter((u: any) =>
+          u.owner?.toLowerCase() === input.trim().toLowerCase()
+        );
+      }
+      setNfts(filtered || []);
+      if (!filtered || filtered.length === 0) setError('No NFTs found for this input.');
+    } catch (e) {
+      setError('Error fetching NFTs.');
+    } finally {
+      setIsLoading(false);
     }
-  }
-
-  const formatTimestamp = (timestamp: bigint) => {
-    return new Date(Number(timestamp) * 1000).toLocaleString()
-  }
-
-  const proofTyped = proof as Proof | undefined;
+  };
 
   return (
     <Card className="w-full">
@@ -127,101 +52,92 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Search for registered content by its SHA-256 hash
+          Enter your wallet address or Twitter handle to view your registered content.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="search-hash">Content Hash</Label>
+            <Label htmlFor="input">Wallet Address or Twitter Handle</Label>
             <div className="flex space-x-2">
-              <Input
-                id="search-hash"
-                placeholder="0x..."
-                value={searchHash}
-                onChange={(e) => setSearchHash(e.target.value)}
-                className="flex-1"
-              />
-              <Button onClick={handleSearch} disabled={!searchHash.trim()}>
-                Search
-              </Button>
+              <Input id="input" placeholder="0x... or @handle" value={input} onChange={e => setInput(e.target.value)} className="flex-1" />
+              <Button onClick={handleSearch} disabled={!input.trim() || isLoading}>Search</Button>
             </div>
           </div>
-
-          {currentHash && (
-            <div className="space-y-4">
-              <div className="p-4 bg-gray-50 rounded-md">
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <Hash className="h-4 w-4" />
-                  <span>Hash: {currentHash}</span>
-                </div>
-                <div className="mt-2">
-                  {isRegistered === true ? (
-                    <span className="text-green-600 text-sm">✓ Registered</span>
-                  ) : isRegistered === false ? (
-                    <span className="text-red-600 text-sm">✗ Not Registered</span>
-                  ) : (
-                    <span className="text-gray-600 text-sm">Checking...</span>
-                  )}
-                </div>
-              </div>
-
-              {isLoading && (
-                <div className="flex items-center justify-center p-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              )}
-
-              {proofTyped && (
-                <Card>
+          {isLoading && (
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          )}
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-700">{error}</div>
+          )}
+          {nfts.length > 0 && (
+            <div className="space-y-6">
+              {nfts.map((nft, idx) => (
+                <Card key={nft.id || idx}>
                   <CardHeader>
                     <CardTitle className="flex items-center space-x-2">
                       <FileText className="h-5 w-5" />
-                      <span>{proofTyped.title}</span>
+                      <span>{nft.metadata?.title || 'Untitled'}</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">License</Label>
-                        <p className="text-sm text-gray-600">{proofTyped.license}</p>
+                        <p className="text-sm text-gray-600">{nft.metadata?.license}</p>
                       </div>
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Creator</Label>
                         <div className="flex items-center space-x-2">
                           <User className="h-4 w-4 text-gray-500" />
                           <code className="text-sm font-mono text-gray-700">
-                            {proofTyped.creator}
+                            {nft.owner}
                           </code>
                         </div>
                       </div>
                     </div>
-                    
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Registration Date</Label>
                       <div className="flex items-center space-x-2">
                         <Calendar className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          {formatTimestamp(proofTyped.timestamp)}
+                          {nft.timestamp ? new Date(Number(nft.timestamp) * 1000).toLocaleString() : 'N/A'}
                         </span>
                       </div>
                     </div>
-
-                    {proofTyped.twitterHandle && (
+                    {nft.metadata?.twitterHandle && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Twitter Handle</Label>
                         <p className="text-sm text-blue-600">
-                          @{proofTyped.twitterHandle}
+                          @{nft.metadata.twitterHandle}
                         </p>
+                      </div>
+                    )}
+                    {nft.metadata?.twitter && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Twitter Data</Label>
+                        <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
+                          {JSON.stringify(nft.metadata.twitter, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {nft.metadata?.content && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Content</Label>
+                        <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto">
+                          {nft.metadata.content}
+                        </pre>
                       </div>
                     )}
                   </CardContent>
                 </Card>
-              )}
+              ))}
             </div>
           )}
         </div>
       </CardContent>
     </Card>
-  )
+  );
 } 

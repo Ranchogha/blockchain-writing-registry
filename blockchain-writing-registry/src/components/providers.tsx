@@ -1,65 +1,62 @@
 'use client'
 
-import { WagmiProvider, createConfig, http } from 'wagmi'
-import { mainnet, polygon } from 'wagmi/chains'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { metaMask, walletConnect } from 'wagmi/connectors'
+import { CampProvider } from '@campnetwork/origin/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client';
+import { WagmiProvider, createConfig, http } from 'wagmi';
+import { metaMask, coinbaseWallet, walletConnect, injected } from 'wagmi/connectors';
 
-// Camp Network (BaseCAMP) configuration
+const queryClient = new QueryClient();
+
+const apollo = new ApolloClient({
+  uri: process.env.NEXT_PUBLIC_SUBGRAPH_URL || '',
+  cache: new InMemoryCache(),
+});
+
+// Camp Network BaseCAMP chain config
 const campNetwork = {
   id: 123420001114,
-  name: 'basecamp',
+  name: 'Camp Network BaseCAMP',
   network: 'basecamp',
   nativeCurrency: {
-    decimals: 18,
     name: 'CAMP',
     symbol: 'CAMP',
+    decimals: 18,
   },
   rpcUrls: {
-    public: {
-      http: [
-        'https://rpc.basecamp.t.raas.gelato.cloud',
-        'https://rpc-campnetwork.xyz'
-      ],
-    },
-    default: {
-      http: ['https://rpc.basecamp.t.raas.gelato.cloud'],
-    },
+    default: { http: [process.env.NEXT_PUBLIC_CAMP_NETWORK_RPC || 'https://rpc.basecamp.t.raas.gelato.cloud'] },
+    public: { http: [process.env.NEXT_PUBLIC_CAMP_NETWORK_RPC_2 || 'https://rpc-campnetwork.xyz'] },
   },
   blockExplorers: {
-    default: {
-      name: 'BaseCAMP Explorer',
-      url: 'https://basecamp.cloud.blockscout.com/',
-    },
+    default: { name: 'BaseCAMP Explorer', url: process.env.NEXT_PUBLIC_CAMP_NETWORK_EXPLORER || 'https://basecamp.cloud.blockscout.com/' },
   },
-} as const
+  testnet: false,
+};
 
-// Set up wagmi config
-export const config = createConfig({
-  chains: [campNetwork, mainnet, polygon],
+const config = createConfig({
+  chains: [campNetwork],
   connectors: [
     metaMask(),
-    walletConnect({
-      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
-    }),
+    coinbaseWallet({ appName: 'Writing Registry' }),
+    walletConnect({ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo', showQrModal: true }),
+    injected(),
   ],
   transports: {
     [campNetwork.id]: http(),
-    [mainnet.id]: http(),
-    [polygon.id]: http(),
   },
-})
-
-const queryClient = new QueryClient()
+});
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-        <ReactQueryDevtools initialIsOpen={false} />
-      </QueryClientProvider>
-    </WagmiProvider>
-  )
+    <QueryClientProvider client={queryClient}>
+      <WagmiProvider config={config}>
+        {/* CampProvider handles wallet and social login (MetaMask, WalletConnect, Twitter, etc.) */}
+        <CampProvider clientId={process.env.NEXT_PUBLIC_ORIGIN_CLIENT_ID || ''}>
+          <ApolloProvider client={apollo}>
+            {children}
+          </ApolloProvider>
+        </CampProvider>
+      </WagmiProvider>
+    </QueryClientProvider>
+  );
 } 
