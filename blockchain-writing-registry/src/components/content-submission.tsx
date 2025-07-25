@@ -108,7 +108,9 @@ export function ContentSubmission() {
         content
       };
       const licence = {
-        duration: "31536000", // 1 year in seconds as a string
+        price: 0n,
+        duration: 31536000, // 1 year in seconds as a number
+        royaltyBps: 0,
         paymentToken: '0x0000000000000000000000000000000000000000' as `0x${string}`,
       };
       // Debug logs for troubleshooting
