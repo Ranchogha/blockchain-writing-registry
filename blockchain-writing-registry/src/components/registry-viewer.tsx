@@ -136,30 +136,58 @@ export function RegistryViewer() {
         for (let i = 0; i < uploads.length; i++) {
           const upload = uploads[i];
           console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
-          
+
           try {
             console.log('🔍 Fetching content from URL:', upload.url);
             const response = await fetch(upload.url);
             console.log('🔍 Response status:', response.status, response.statusText);
-            
+
             if (response.ok) {
               const content = await response.text();
               console.log('🔍 Fetched content length:', content.length);
               console.log('🔍 Content preview:', content.substring(0, 100) + '...');
-              
+
+              // Parse title (first non-empty line or line starting with Title:)
+              let title = 'Untitled';
+              let twitterHandle = '';
+              const lines = content.split(/\r?\n/);
+              for (let line of lines) {
+                const trimmed = line.trim();
+                if (!twitterHandle) {
+                  // Look for Twitter: @handle or @handle
+                  const match = trimmed.match(/(?:Twitter:)?\s*(@[\w_]+)/i);
+                  if (match) twitterHandle = match[1];
+                }
+                if (title === 'Untitled' && trimmed) {
+                  // Prefer a line like Title: ...
+                  const titleMatch = trimmed.match(/^Title:\s*(.+)$/i);
+                  if (titleMatch) {
+                    title = titleMatch[1];
+                    continue;
+                  }
+                  // Otherwise, use the first non-empty line
+                  title = trimmed;
+                }
+                if (title !== 'Untitled' && twitterHandle) break;
+              }
+
+              // Use actual creator/owner if available
+              const owner = upload.owner || upload.creator || 'Unknown';
+              const creator = upload.creator || upload.owner || 'Unknown';
+
               // Create enriched upload with metadata
               const enrichedUpload = {
                 ...upload,
                 content: content,
                 metadata: {
-                  title: upload.url.split('/').pop()?.split('?')[0]?.replace('.txt', '') || 'Untitled',
+                  title: title,
                   content: content,
-                  contentHash: `0x${content.length.toString(16).padStart(64, '0')}`, // Simple hash for demo
+                  contentHash: `0x${Buffer.from(content).toString('hex').substring(0, 64)}`,
                   license: 'All Rights Reserved',
-                  twitterHandle: 'demo_user'
+                  twitterHandle: twitterHandle || '',
                 },
-                owner: '0xD7fa1A813E4D56fAbE22FDA214ee8F8896408132', // Demo owner
-                creator: '0xD7fa1A813E4D56fAbE22FDA214ee8F8896408132', // Demo creator
+                owner: owner,
+                creator: creator,
                 timestamp: Math.floor(Date.now() / 1000)
               };
               enrichedUploads.push(enrichedUpload);
@@ -167,9 +195,11 @@ export function RegistryViewer() {
             } else {
               console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
             }
-          } catch (e: any) {
+          } catch (e: unknown) {
             console.error('🔍 Failed to fetch content for upload:', e);
-            console.error('🔍 Error details:', e.message, e.stack);
+            if (e instanceof Error) {
+              console.error('🔍 Error details:', e.message, e.stack);
+            }
           }
         }
         
@@ -178,46 +208,24 @@ export function RegistryViewer() {
         let filtered: any[] = [];
         
         if (searchType === 'twitter') {
-          const handle = input.trim().replace('@', '');
-          console.log('🔍 Searching for Twitter handle:', handle);
-          filtered = enrichedUploads.filter((u: any) => {
-            console.log('🔍 Checking upload:', u);
-            console.log('🔍 Upload twitterHandle:', u.twitterHandle);
-            console.log('🔍 Upload metadata:', u.metadata);
-            return u.twitterHandle?.toLowerCase() === handle.toLowerCase() || 
-                   u.metadata?.twitterHandle?.toLowerCase() === handle.toLowerCase();
-          });
+          const handle = input.trim().replace('@', '').toLowerCase();
+          filtered = enrichedUploads.filter((u: any) =>
+            u.metadata?.twitterHandle?.replace('@', '').toLowerCase() === handle
+          );
         } else if (searchType === 'hash') {
-          // For content hash, find specific content
           const searchHash = input.trim().toLowerCase();
-          console.log('🔍 Searching for content hash:', searchHash);
-          filtered = enrichedUploads.filter((u: any) => {
-            console.log('🔍 Checking upload:', u);
-            console.log('🔍 Upload contentHash:', u.metadata?.contentHash);
-            console.log('🔍 Upload metadata:', u.metadata);
-            return u.metadata?.contentHash?.toLowerCase() === searchHash;
-          });
+          filtered = enrichedUploads.filter((u: any) =>
+            u.metadata?.contentHash?.toLowerCase() === searchHash
+          );
         } else {
-          // For wallet address, show ALL content from that address
           const searchAddress = input.trim().toLowerCase();
-          console.log('🔍 Searching for wallet address:', searchAddress);
-          filtered = enrichedUploads.filter((u: any) => {
-            console.log('🔍 Checking upload:', u);
-            console.log('🔍 Upload owner:', u.owner);
-            console.log('🔍 Upload creator:', u.creator);
-            console.log('🔍 Upload metadata:', u.metadata);
-            return u.owner?.toLowerCase() === searchAddress || u.creator?.toLowerCase() === searchAddress;
-          });
+          filtered = enrichedUploads.filter((u: any) =>
+            u.owner?.toLowerCase() === searchAddress || u.creator?.toLowerCase() === searchAddress
+          );
         }
-
-        console.log('🔍 Filtered results:', filtered);
-        console.log('🔍 Filtered length:', filtered.length);
         setNfts(filtered || []);
-        
         if (!filtered || filtered.length === 0) {
           setError(`No registered content found for this search. (Searched ${enrichedUploads?.length || 0} total items)`);
-          // Show raw data for debugging
-          console.log('🔍 Raw enriched uploads data for debugging:', JSON.stringify(enrichedUploads, null, 2));
         }
       } else {
         // Use WritingRegistry contract (mock data for now)
@@ -256,9 +264,10 @@ export function RegistryViewer() {
           setError('No WritingRegistry content found for this search.');
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('❌ Search error:', e);
-      setError(`Error searching for content: ${e.message || 'Unknown error'}`);
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      setError(`Error searching for content: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -312,34 +321,10 @@ export function RegistryViewer() {
         )}
 
         {/* Data Source Toggle */}
-        <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md">
-          <Label className="text-sm font-medium mb-2 block">Data Source</Label>
-          <div className="flex space-x-2">
-            <Button
-              variant={dataSource === 'origin' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setDataSource('origin')}
-              className="flex items-center space-x-2"
-            >
-              <Zap className="h-4 w-4" />
-              <span>Origin SDK</span>
-            </Button>
-            <Button
-              variant={dataSource === 'contract' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setDataSource('contract')}
-              className="flex items-center space-x-2"
-            >
-              <Database className="h-4 w-4" />
-              <span>WritingRegistry Contract</span>
-            </Button>
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            {dataSource === 'origin' 
-              ? 'Searching Origin SDK registered content (shows all content for wallet address)'
-              : 'Searching WritingRegistry contract (shows all content for wallet address)'
-            }
-          </p>
+        <div className="mb-4 p-4 bg-orange-100 border border-orange-200 rounded-md">
+          <Label className="text-sm font-medium mb-2 block text-orange-800">Data Source</Label>
+          <div className="text-sm text-orange-700 font-semibold">Origin SDK</div>
+          <p className="text-xs text-orange-700 mt-2">Searching Origin SDK registered content</p>
         </div>
 
         <div className="space-y-6">
@@ -381,7 +366,7 @@ export function RegistryViewer() {
                   Found {nfts.length} item{nfts.length !== 1 ? 's' : ''} for {searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}
                 </h3>
                 <div className="text-sm text-gray-500">
-                  {dataSource === 'origin' ? 'Origin SDK Content' : 'WritingRegistry Content'}
+                  Origin SDK Content
                 </div>
               </div>
               
@@ -391,12 +376,12 @@ export function RegistryViewer() {
                     <CardTitle className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <FileText className="h-5 w-5" />
-                        <span>{dataSource === 'origin' ? (nft.metadata?.title || 'Untitled') : (nft.title || 'Untitled')}</span>
+                        <span>{nft.metadata?.title || 'Untitled'}</span>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => copyToClipboard(dataSource === 'origin' ? (nft.metadata?.contentHash || 'N/A') : nft.hash)}
+                        onClick={() => copyToClipboard(nft.metadata?.contentHash || 'N/A')}
                         className="flex items-center space-x-2"
                       >
                         <Copy className="h-4 w-4" />
@@ -409,7 +394,7 @@ export function RegistryViewer() {
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">License</Label>
                         <p className="text-sm text-gray-600">
-                          {dataSource === 'origin' ? nft.metadata?.license : nft.license}
+                          {nft.metadata?.license}
                         </p>
                       </div>
                       <div className="space-y-2">
@@ -417,7 +402,7 @@ export function RegistryViewer() {
                         <div className="flex items-center space-x-2">
                           <User className="h-4 w-4 text-gray-500" />
                           <code className="text-sm font-mono text-gray-700">
-                            {dataSource === 'origin' ? nft.owner : nft.creator}
+                            {nft.creator}
                           </code>
                         </div>
                       </div>
@@ -428,7 +413,7 @@ export function RegistryViewer() {
                       <div className="flex items-center space-x-2">
                         <Hash className="h-4 w-4 text-gray-500" />
                         <code className="text-sm font-mono text-gray-700 break-all">
-                          {dataSource === 'origin' ? (nft.metadata?.contentHash || 'N/A') : nft.hash}
+                          {nft.metadata?.contentHash || 'N/A'}
                         </code>
                       </div>
                     </div>
@@ -443,19 +428,19 @@ export function RegistryViewer() {
                       </div>
                     </div>
 
-                    {(dataSource === 'origin' ? nft.metadata?.twitterHandle : nft.twitterHandle) && (
+                    {(nft.metadata?.twitterHandle) && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Twitter Handle</Label>
                         <p className="text-sm text-blue-600">
-                          @{dataSource === 'origin' ? nft.metadata.twitterHandle : nft.twitterHandle}
+                          @{nft.metadata.twitterHandle}
                         </p>
                       </div>
                     )}
 
-                    {dataSource === 'origin' && nft.metadata?.content && (
+                    {nft.metadata?.content && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Content Preview</Label>
-                        <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
+                        <pre className="bg-white p-2 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
                           {nft.metadata.content.length > 200 
                             ? `${nft.metadata.content.substring(0, 200)}...` 
                             : nft.metadata.content}
@@ -463,7 +448,7 @@ export function RegistryViewer() {
                       </div>
                     )}
 
-                    {dataSource === 'origin' && nft.metadata?.twitter && (
+                    {nft.metadata?.twitter && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Twitter Data</Label>
                         <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
