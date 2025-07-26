@@ -222,18 +222,38 @@ export function RegistryViewer() {
       console.log('🔍 Enriched uploads:', enrichedUploads);
       console.log('🔍 Fetch errors:', fetchErrors);
       
-      // For now, show all uploads regardless of search criteria
-      // This ensures users can see the content that was found
-      console.log('🔍 Setting all enriched uploads as results');
-      console.log('🔍 Enriched uploads length:', enrichedUploads?.length || 0);
-      console.log('🔍 Enriched uploads is array:', Array.isArray(enrichedUploads));
+      // Filter results based on search criteria
+      let filteredResults = enrichedUploads || [];
       
-      // Always set the NFTs, even if enrichedUploads is empty
-      const finalResults = enrichedUploads || [];
+      if (searchType === 'twitter') {
+        const handle = input.trim().replace('@', '').toLowerCase();
+        console.log('🔍 Filtering by Twitter handle:', handle);
+        filteredResults = enrichedUploads.filter((u: any) =>
+          u.metadata?.twitterHandle?.replace('@', '').toLowerCase() === handle
+        );
+      } else if (searchType === 'hash') {
+        const searchHash = input.trim().toLowerCase();
+        console.log('🔍 Filtering by content hash:', searchHash);
+        filteredResults = enrichedUploads.filter((u: any) =>
+          u.metadata?.contentHash?.toLowerCase() === searchHash
+        );
+      } else if (searchType === 'address') {
+        const searchAddress = input.trim().toLowerCase();
+        console.log('🔍 Filtering by wallet address:', searchAddress);
+        filteredResults = enrichedUploads.filter((u: any) =>
+          u.owner?.toLowerCase() === searchAddress || u.creator?.toLowerCase() === searchAddress
+        );
+      }
+      
+      console.log('🔍 Filtered results:', filteredResults);
+      console.log('🔍 Search criteria:', { searchType, input, searchAddress: input.trim().toLowerCase() });
+      
+      // Always set the NFTs, even if filteredResults is empty
+      const finalResults = filteredResults || [];
       console.log('🔍 Final results to set:', finalResults);
       console.log('🔍 Final results length:', finalResults.length);
       
-      // If no enriched uploads but we have raw uploads, create sample data for testing
+      // If no filtered results but we have raw uploads, create sample data for testing
       if (finalResults.length === 0 && uploads && uploads.length > 0) {
         console.log('🔍 Creating sample data from raw uploads for testing');
         const sampleResults = uploads.map((upload: any, index: number) => ({
@@ -262,7 +282,7 @@ export function RegistryViewer() {
       
       if (finalResults.length === 0) {
         console.log('🔍 No results to display, setting error');
-        let errorMsg = `No registered content found for this search. (Searched ${enrichedUploads?.length || 0} total items)`;
+        let errorMsg = `No registered content found for ${searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}: ${input.trim()}`;
         if (fetchErrors.length > 0) {
           errorMsg += `\n\nFetch errors: ${fetchErrors.slice(0, 3).join(', ')}${fetchErrors.length > 3 ? '...' : ''}`;
         }
@@ -272,6 +292,7 @@ export function RegistryViewer() {
         setDebugInfo({
           uploads: uploads,
           enrichedUploads: enrichedUploads,
+          filteredResults: filteredResults,
           fetchErrors: fetchErrors,
           searchCriteria: { searchType, input },
           originAvailable: !!origin,
