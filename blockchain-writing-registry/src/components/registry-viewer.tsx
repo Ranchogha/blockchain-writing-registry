@@ -103,29 +103,87 @@ export function RegistryViewer() {
           return;
         }
         
-        const uploads = await origin.getOriginUploads();
-        console.log('All Origin uploads:', uploads); // Debug log
+        console.log('🔍 Starting Origin SDK search for registered content...');
+        console.log('🔍 Search input:', input);
+        console.log('🔍 Search type:', searchType);
+        console.log('🔍 Origin object:', origin);
+        console.log('🔍 Available origin methods:', Object.getOwnPropertyNames(origin));
+        
+        // Try different Origin SDK methods to get content
+        let uploads = [];
+        
+        try {
+          // Method 1: getOriginUploads
+          uploads = await origin.getOriginUploads();
+          console.log('🔍 getOriginUploads result:', uploads);
+        } catch (e: any) {
+          console.log('🔍 getOriginUploads failed:', e);
+        }
+        
+        // If getOriginUploads is empty, try other methods
+        if (!uploads || uploads.length === 0) {
+          try {
+            // Method 2: Try to get user's uploads
+            if (origin.getUserUploads) {
+              uploads = await origin.getUserUploads();
+              console.log('🔍 getUserUploads result:', uploads);
+            }
+          } catch (e: any) {
+            console.log('🔍 getUserUploads failed:', e);
+          }
+        }
+        
+        // If still empty, try to get all content
+        if (!uploads || uploads.length === 0) {
+          try {
+            // Method 3: Try to get all content
+            if (origin.getAllContent) {
+              uploads = await origin.getAllContent();
+              console.log('🔍 getAllContent result:', uploads);
+            }
+          } catch (e: any) {
+            console.log('🔍 getAllContent failed:', e);
+          }
+        }
+        
+        console.log('🔍 Final uploads to process:', uploads);
+        console.log('🔍 Uploads length:', uploads?.length || 0);
+        
+        if (uploads && uploads.length > 0) {
+          console.log('🔍 First upload structure:', uploads[0]);
+          console.log('🔍 Upload keys:', Object.keys(uploads[0] || {}));
+        }
         
         let filtered: any[] = [];
         
         if (searchType === 'twitter') {
           const handle = input.trim().replace('@', '');
-          filtered = uploads.filter((u: any) =>
-            u.twitterHandle?.toLowerCase() === handle.toLowerCase()
-          );
+          console.log('🔍 Searching for Twitter handle:', handle);
+          filtered = uploads.filter((u: any) => {
+            console.log('🔍 Checking upload:', u);
+            console.log('🔍 Upload twitterHandle:', u.twitterHandle);
+            console.log('🔍 Upload metadata:', u.metadata);
+            return u.twitterHandle?.toLowerCase() === handle.toLowerCase();
+          });
         } else {
           // For wallet address, show ALL content from that address
           const searchAddress = input.trim().toLowerCase();
-          filtered = uploads.filter((u: any) =>
-            u.owner?.toLowerCase() === searchAddress
-          );
+          console.log('🔍 Searching for wallet address:', searchAddress);
+          filtered = uploads.filter((u: any) => {
+            console.log('🔍 Checking upload:', u);
+            console.log('🔍 Upload owner:', u.owner);
+            console.log('🔍 Upload creator:', u.creator);
+            console.log('🔍 Upload metadata:', u.metadata);
+            return u.owner?.toLowerCase() === searchAddress || u.creator?.toLowerCase() === searchAddress;
+          });
         }
 
-        console.log('Filtered results:', filtered); // Debug log
+        console.log('🔍 Filtered results:', filtered);
+        console.log('🔍 Filtered length:', filtered.length);
         setNfts(filtered || []);
         
         if (!filtered || filtered.length === 0) {
-          setError('No Origin SDK NFTs found for this search.');
+          setError(`No registered content found for this search. (Searched ${uploads?.length || 0} total items)`);
         }
       } else {
         // Use WritingRegistry contract (mock data for now)
@@ -160,8 +218,8 @@ export function RegistryViewer() {
         }
       }
     } catch (e) {
-      console.error('Search error:', e);
-      setError('Error searching for content. Please try again.');
+      console.error('❌ Search error:', e);
+      setError(`Error searching for content: ${e.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -237,7 +295,7 @@ export function RegistryViewer() {
           </div>
           <p className="text-xs text-gray-500 mt-2">
             {dataSource === 'origin' 
-              ? 'Searching Origin SDK NFTs (shows all content for wallet address)'
+              ? 'Searching Origin SDK registered content (shows all content for wallet address)'
               : 'Searching WritingRegistry contract (shows all content for wallet address)'
             }
           </p>
@@ -281,7 +339,7 @@ export function RegistryViewer() {
                   Found {nfts.length} item{nfts.length !== 1 ? 's' : ''} for {searchType === 'twitter' ? 'Twitter handle' : 'wallet address'}
                 </h3>
                 <div className="text-sm text-gray-500">
-                  {dataSource === 'origin' ? 'Origin SDK NFTs' : 'WritingRegistry Content'}
+                  {dataSource === 'origin' ? 'Origin SDK Content' : 'WritingRegistry Content'}
                 </div>
               </div>
               
@@ -384,7 +442,7 @@ export function RegistryViewer() {
               <br />• <strong>Wallet Address:</strong> Shows ALL content registered by that address
               <br />• <strong>Twitter Handle:</strong> Shows content with that specific Twitter handle
               <br />• <strong>Copy Hash:</strong> Click to copy the content hash for verification
-              <br />• <strong>Origin SDK:</strong> Shows NFTs minted via <code>origin.mintFile()</code>
+              <br />• <strong>Origin SDK:</strong> Shows registered content via <code>origin.mintFile()</code>
               <br />• <strong>WritingRegistry:</strong> Shows content from your smart contract
             </p>
           </div>
