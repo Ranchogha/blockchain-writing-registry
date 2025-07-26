@@ -11,10 +11,45 @@ import CryptoJS from 'crypto-js';
 import Image from 'next/image';
 import { useAuth, useAuthState } from '@campnetwork/origin/react';
 import { TwitterAPI } from '@campnetwork/origin';
-import { useAccount, useChainId, useSwitchChain, useBalance, useWalletClient } from 'wagmi';
+import { useAccount, useChainId, useSwitchChain, useBalance, useWalletClient, useContractWrite, usePrepareContractWrite } from 'wagmi';
 import { getAddress } from 'viem';
 import { useCallback } from 'react';
 import { toast } from 'react-hot-toast';
+
+// WritingRegistry ABI - only the functions we need
+const WRITING_REGISTRY_ABI = [
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "hash",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "license",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "twitterHandle",
+        "type": "string"
+      }
+    ],
+    "name": "registerProof",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+] as const;
+
+// Contract address - you'll need to update this with your deployed contract address
+const WRITING_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}` || '0xb9C7cd7158805B03A8ADc999F6C08933E51BD97d';
 
 export function ContentSubmission() {
   const { origin, jwt } = useAuth();
@@ -38,6 +73,17 @@ export function ContentSubmission() {
 
   // Camp Network chainId
   const CAMP_CHAIN_ID = 123420001114;
+
+  // Contract write preparation
+  const { config } = usePrepareContractWrite({
+    address: WRITING_REGISTRY_ADDRESS,
+    abi: WRITING_REGISTRY_ABI,
+    functionName: 'registerProof',
+    args: [contentHash, title, license, twitterHandle],
+    enabled: Boolean(contentHash && title && license && isConnected && chainId === CAMP_CHAIN_ID),
+  });
+
+  const { write: registerProof, isLoading: isRegistering, error: registerError } = useContractWrite(config);
 
   const generateHash = (text: string) => {
     if (!text.trim()) return '';
@@ -74,7 +120,6 @@ export function ContentSubmission() {
       setPreCheckError('Insufficient balance for transaction.');
       return false;
     }
-    // Duplicate hash check removed (see previous fixes)
     return true;
   }, [isConnected, chainId, content, title, license, contentHash, balanceData]);
 
@@ -86,76 +131,42 @@ export function ContentSubmission() {
       toast.error(preCheckError || 'Pre-check failed.');
       return;
     }
-    if (!origin || !authenticated) {
-      toast.error('Please connect your wallet and authenticate first');
+
+    if (!registerProof) {
+      toast.error('Contract write not ready. Please check your input and network connection.');
       return;
     }
+
     try {
       setIsWriting(true);
       setIsSuccess(false);
-      let twitterData = null;
-      if (twitterHandle) {
-        try {
-          const twitter = new TwitterAPI({ apiKey: process.env.NEXT_PUBLIC_ORIGIN_API_KEY || '' });
-          twitterData = await twitter.fetchUserByUsername(twitterHandle.replace('@', ''));
-        } catch (err) {
-          // Twitter fetch is optional, continue if it fails
-        }
-      }
-      const meta = {
-        title,
-        contentHash,
-        content
-      };
-      const licence = {
-        price: 0n,
-        duration: 86400, // 1 day in seconds
-        royaltyBps: 0,
-        paymentToken: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-      };
-      // Debug logs for troubleshooting
-      console.log('origin:', origin);
-      console.log('authenticated:', authenticated);
-      console.log('walletClient:', walletClient);
-      console.log('file:', content, title);
-      console.log('licence:', licence);
-      // Defensive provider setup for Origin SDK
-      if (isConnected && walletClient && origin && typeof origin.setViemClient === 'function') {
-        try {
-          origin.setViemClient(walletClient);
-        } catch (err) {
-          console.error('Failed to set viem client:', err, walletClient);
-          // No setProvider fallback, just log the error
+
+      // Call the WritingRegistry contract directly
+      const tx = await registerProof();
+      
+      if (tx) {
+        setTxHash(tx.hash);
+        setIsSuccess(true);
+        toast.success('Content registration transaction submitted!');
+        
+        // Wait for transaction confirmation
+        const receipt = await tx.wait();
+        if (receipt.status === 1) {
+          toast.success('Content registered successfully on blockchain!');
+        } else {
+          toast.error('Transaction failed on blockchain.');
         }
       } else {
-        console.error('Wallet not connected or walletClient missing:', { isConnected, walletClient, origin });
-        toast.error('Wallet is not connected. Please connect your wallet.');
-        setIsWriting(false);
-        return;
+        toast.error('Failed to submit transaction.');
       }
-      // Call mintFile (Origin SDK should use the connected wallet)
-      const fileToMint = new File([content], `${title}.txt`, { type: 'text/plain' });
-      const tx = await origin.mintFile(
-        fileToMint,
-        meta, // Pass meta as the metadata argument
-        licence
-      );
-      if (!tx) {
-        toast.error('Minting failed: No transaction returned. Check your input and authentication.');
-        setIsWriting(false);
-        return;
-      }
-      setTxHash(tx);
-      setIsSuccess(true);
-      toast.success('Content registered successfully!');
     } catch (error: any) {
       console.error('Error registering proof:', error);
       if (error?.code === 4001) {
-        toast.error('Signature request was rejected.');
+        toast.error('Transaction was rejected by user.');
       } else if (error?.message) {
         toast.error(error.message);
       } else {
-        toast.error(JSON.stringify(error));
+        toast.error('Failed to register proof. Please try again.');
       }
     } finally {
       setIsWriting(false);
