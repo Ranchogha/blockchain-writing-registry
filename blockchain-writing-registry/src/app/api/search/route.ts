@@ -78,9 +78,38 @@ const SEARCH_PROOFS_BY_HASH_QUERY = `
   }
 `;
 
+export async function GET() {
+  // Simple test endpoint to verify the API is working
+  const sampleData = [
+    {
+      id: 'test-1',
+      hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      title: 'Test Story',
+      license: 'All Rights Reserved',
+      twitterHandle: 'sampleuser',
+      timestamp: Math.floor(Date.now() / 1000),
+      creator: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6',
+      metadata: {
+        title: 'Test Story',
+        license: 'All Rights Reserved',
+        twitterHandle: 'sampleuser',
+        contentHash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      }
+    }
+  ];
+
+  return NextResponse.json({
+    success: true,
+    data: sampleData,
+    message: 'API is working - test data returned'
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { searchType, searchValue, dataSource } = await request.json();
+
+    console.log('🔍 API Search Request:', { searchType, searchValue, dataSource });
 
     if (!searchType || !searchValue) {
       return NextResponse.json(
@@ -90,10 +119,11 @@ export async function POST(request: NextRequest) {
     }
 
     const subgraphUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL;
+    console.log('🔍 Subgraph URL:', subgraphUrl ? 'Configured' : 'Not configured');
     
     if (!subgraphUrl) {
       // Return sample data for testing when subgraph is not configured
-      console.log('Subgraph URL not configured, returning sample data');
+      console.log('🔍 Using sample data for testing');
       
       const sampleData = [
         {
@@ -132,25 +162,32 @@ export async function POST(request: NextRequest) {
         }
       ];
 
+      console.log('🔍 Sample data available:', sampleData.length, 'items');
+
       // Filter sample data based on search criteria
       let filteredData = sampleData;
       
       if (searchType === 'address') {
         const searchAddress = searchValue.toLowerCase();
+        console.log('🔍 Filtering by address:', searchAddress);
         filteredData = sampleData.filter(item => 
           item.creator.toLowerCase() === searchAddress
         );
       } else if (searchType === 'twitter') {
         const handle = searchValue.replace('@', '').toLowerCase();
+        console.log('🔍 Filtering by Twitter handle:', handle);
         filteredData = sampleData.filter(item => 
           item.twitterHandle.toLowerCase() === handle
         );
       } else if (searchType === 'hash') {
         const searchHash = searchValue.toLowerCase();
+        console.log('🔍 Filtering by hash:', searchHash);
         filteredData = sampleData.filter(item => 
           item.hash.toLowerCase() === searchHash
         );
       }
+
+      console.log('🔍 Filtered data count:', filteredData.length);
 
       return NextResponse.json({
         success: true,

@@ -275,6 +275,7 @@ export function RegistryViewer() {
       } else {
         // Use the new API endpoint to fetch data from subgraph
         console.log('🔍 Using API endpoint to search subgraph...');
+        console.log('🔍 Search parameters:', { searchType, searchValue: input.trim(), dataSource: 'subgraph' });
         
         const response = await fetch('/api/search', {
           method: 'POST',
@@ -288,8 +289,11 @@ export function RegistryViewer() {
           }),
         });
 
+        console.log('🔍 Response status:', response.status, response.statusText);
+
         if (!response.ok) {
           const errorData = await response.json();
+          console.error('🔍 Response error:', errorData);
           throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
 
@@ -297,12 +301,17 @@ export function RegistryViewer() {
         console.log('🔍 API response:', result);
 
         if (result.success && result.data) {
+          console.log('🔍 Setting NFTs data:', result.data);
           setNfts(result.data);
           setActualDataSource(result.dataSource || 'subgraph');
           if (result.data.length === 0) {
             setError(`No WritingRegistry content found for ${searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}: ${input.trim()}`);
+          } else {
+            console.log('🔍 Found', result.data.length, 'items, clearing any previous errors');
+            setError(''); // Clear any previous errors
           }
         } else {
+          console.error('🔍 API returned error:', result.error);
           setError(result.error || 'Failed to fetch data from subgraph');
         }
       }
