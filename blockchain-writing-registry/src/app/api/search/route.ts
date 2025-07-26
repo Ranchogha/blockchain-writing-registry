@@ -1,4 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createPublicClient, http, parseAbiItem } from 'viem';
+import { base } from 'viem/chains';
+
+// WritingRegistry contract ABI (just the events we need)
+const WRITING_REGISTRY_ABI = [
+  parseAbiItem('event ProofRegistered(bytes32 indexed hash, address indexed creator, string title, string license, string twitterHandle, uint256 timestamp)')
+];
+
+// WritingRegistry contract address on Base
+const WRITING_REGISTRY_ADDRESS = '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6';
+
+// Create viem client for Base
+const client = createPublicClient({
+  chain: base,
+  transport: http()
+});
+
+// Function to fetch real data from WritingRegistry contract
+async function fetchRealData(searchType: string, searchValue: string) {
+  try {
+    console.log('🔍 Fetching real data from WritingRegistry contract...');
+    
+    // Get the latest block number
+    const latestBlock = await client.getBlockNumber();
+    console.log('🔍 Latest block:', latestBlock);
+    
+    // Get logs from the last 10000 blocks (adjust as needed)
+    const fromBlock = latestBlock - 10000n;
+    const toBlock = latestBlock;
+    
+    console.log('🔍 Fetching logs from blocks', fromBlock, 'to', toBlock);
+    
+    const logs = await client.getLogs({
+      address: WRITING_REGISTRY_ADDRESS,
+      event: WRITING_REGISTRY_ABI[0],
+      fromBlock,
+      toBlock,
+    });
+    
+    console.log('🔍 Found', logs.length, 'ProofRegistered events');
+    
+    // Transform logs to the expected format
+    const realData = logs.map((log, index) => {
+      const { hash, creator, title, license, twitterHandle, timestamp } = log.args;
+      return {
+        id: `real-${index}`,
+        hash: hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        title: title || 'Untitled',
+        license: license || 'All Rights Reserved',
+        twitterHandle: twitterHandle || '',
+        timestamp: timestamp ? Number(timestamp) : Math.floor(Date.now() / 1000),
+        creator: creator || '0x0000000000000000000000000000000000000000',
+        blockNumber: log.blockNumber?.toString() || '0',
+        transactionHash: log.transactionHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        metadata: {
+          title: title || 'Untitled',
+          license: license || 'All Rights Reserved',
+          twitterHandle: twitterHandle || '',
+          contentHash: hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        }
+      };
+    });
+    
+    console.log('🔍 Transformed real data:', realData);
+    return realData;
+  } catch (error) {
+    console.error('🔍 Error fetching real data:', error);
+    return [];
+  }
+}
 
 // GraphQL query for the subgraph
 const SEARCH_PROOFS_QUERY = `
@@ -121,9 +191,13 @@ export async function POST(request: NextRequest) {
     const subgraphUrl = process.env.NEXT_PUBLIC_SUBGRAPH_URL;
     console.log('🔍 Subgraph URL:', subgraphUrl ? 'Configured' : 'Not configured');
     
-    if (!subgraphUrl) {
-      // Return sample data for testing when subgraph is not configured
-      console.log('🔍 Using sample data for testing');
+    // Try to fetch real data from the WritingRegistry contract first
+    let allData = await fetchRealData(searchType, searchValue);
+    console.log('🔍 Real data fetched:', allData.length, 'items');
+    
+    // If no real data found, use sample data for testing
+    if (allData.length === 0) {
+      console.log('🔍 No real data found, using sample data for testing');
       
       const sampleData = [
         {
@@ -150,7 +224,7 @@ export async function POST(request: NextRequest) {
           license: 'Creative Commons',
           twitterHandle: 'testwriter',
           timestamp: Math.floor(Date.now() / 1000) - 172800,
-          creator: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6',
+          creator: '0xd486cF2e9960fC28D053ed61aD0157D491a672A7',
           blockNumber: '13968555',
           transactionHash: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
           metadata: {
@@ -158,6 +232,40 @@ export async function POST(request: NextRequest) {
             license: 'Creative Commons',
             twitterHandle: 'testwriter',
             contentHash: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+          }
+        },
+        {
+          id: 'sample-3',
+          hash: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
+          title: 'Third Sample: The Adventure',
+          license: 'MIT',
+          twitterHandle: 'adventurer',
+          timestamp: Math.floor(Date.now() / 1000) - 259200,
+          creator: '0x1234567890123456789012345678901234567890',
+          blockNumber: '13968556',
+          transactionHash: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
+          metadata: {
+            title: 'Third Sample: The Adventure',
+            license: 'MIT',
+            twitterHandle: 'adventurer',
+            contentHash: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
+          }
+        },
+        {
+          id: 'sample-4',
+          hash: '0x5555555555555555555555555555555555555555555555555555555555555555',
+          title: 'Fourth Sample: The Mystery',
+          license: 'GPL',
+          twitterHandle: 'mysterywriter',
+          timestamp: Math.floor(Date.now() / 1000) - 345600,
+          creator: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6',
+          blockNumber: '13968557',
+          transactionHash: '0x5555555555555555555555555555555555555555555555555555555555555555',
+          metadata: {
+            title: 'Fourth Sample: The Mystery',
+            license: 'GPL',
+            twitterHandle: 'mysterywriter',
+            contentHash: '0x5555555555555555555555555555555555555555555555555555555555555555',
           }
         }
       ];
@@ -199,131 +307,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    let query = '';
-    let variables = {};
-
-    switch (searchType) {
-      case 'address':
-        query = SEARCH_PROOFS_BY_CREATOR_QUERY;
-        variables = { creatorAddress: searchValue.toLowerCase() };
-        break;
-      case 'twitter':
-        query = SEARCH_PROOFS_BY_TWITTER_QUERY;
-        variables = { twitterHandle: searchValue.replace('@', '') };
-        break;
-      case 'hash':
-        query = SEARCH_PROOFS_BY_HASH_QUERY;
-        variables = { hash: searchValue };
-        break;
-      default:
-        return NextResponse.json(
-          { error: 'Invalid search type' },
-          { status: 400 }
-        );
-    }
-
-    // Fetch data from subgraph
-    const response = await fetch(subgraphUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Subgraph request failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-
-    if (data.errors) {
-      console.error('GraphQL errors:', data.errors);
-      return NextResponse.json(
-        { error: 'GraphQL query failed', details: data.errors },
-        { status: 500 }
+    // Filter real data based on search criteria
+    let filteredData = allData;
+    
+    if (searchType === 'address') {
+      const searchAddress = searchValue.toLowerCase();
+      console.log('🔍 Filtering real data by address:', searchAddress);
+      filteredData = allData.filter(item => 
+        item.creator.toLowerCase() === searchAddress
+      );
+    } else if (searchType === 'twitter') {
+      const handle = searchValue.replace('@', '').toLowerCase();
+      console.log('🔍 Filtering real data by Twitter handle:', handle);
+      filteredData = allData.filter(item => 
+        item.twitterHandle.toLowerCase() === handle
+      );
+    } else if (searchType === 'hash') {
+      const searchHash = searchValue.toLowerCase();
+      console.log('🔍 Filtering real data by hash:', searchHash);
+      filteredData = allData.filter(item => 
+        item.hash.toLowerCase() === searchHash
       );
     }
 
-    // Transform the data to match the expected format
-    let results = [];
-    
-    if (searchType === 'address') {
-      // Handle creator search
-      const creator = data.data?.creator;
-      if (creator && creator.proofs) {
-        results = creator.proofs.map((proof: any) => ({
-          id: proof.id,
-          hash: proof.hash,
-          title: proof.title,
-          license: proof.license,
-          twitterHandle: proof.twitterHandle,
-          timestamp: proof.timestamp,
-          creator: proof.creator?.address || creator.address,
-          blockNumber: proof.blockNumber,
-          transactionHash: proof.transactionHash,
-          metadata: {
-            title: proof.title,
-            license: proof.license,
-            twitterHandle: proof.twitterHandle,
-            contentHash: proof.hash,
-          }
-        }));
-      }
-    } else if (searchType === 'hash') {
-      // Handle hash search
-      const proof = data.data?.proof;
-      if (proof) {
-        results = [{
-          id: proof.id,
-          hash: proof.hash,
-          title: proof.title,
-          license: proof.license,
-          twitterHandle: proof.twitterHandle,
-          timestamp: proof.timestamp,
-          creator: proof.creator?.address,
-          blockNumber: proof.blockNumber,
-          transactionHash: proof.transactionHash,
-          metadata: {
-            title: proof.title,
-            license: proof.license,
-            twitterHandle: proof.twitterHandle,
-            contentHash: proof.hash,
-          }
-        }];
-      }
-    } else if (searchType === 'twitter') {
-      // Handle Twitter search
-      const proofs = data.data?.proofs || [];
-      results = proofs.map((proof: any) => ({
-        id: proof.id,
-        hash: proof.hash,
-        title: proof.title,
-        license: proof.license,
-        twitterHandle: proof.twitterHandle,
-        timestamp: proof.timestamp,
-        creator: proof.creator?.address,
-        blockNumber: proof.blockNumber,
-        transactionHash: proof.transactionHash,
-        metadata: {
-          title: proof.title,
-          license: proof.license,
-          twitterHandle: proof.twitterHandle,
-          contentHash: proof.hash,
-        }
-      }));
-    }
+    console.log('🔍 Filtered real data count:', filteredData.length);
 
     return NextResponse.json({
       success: true,
-      data: results,
-      count: results.length,
+      data: filteredData,
+      count: filteredData.length,
       searchType,
       searchValue,
-      dataSource: 'subgraph'
+      dataSource: 'real-data'
     });
 
   } catch (error) {

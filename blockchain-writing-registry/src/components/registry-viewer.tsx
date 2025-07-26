@@ -97,212 +97,56 @@ export function RegistryViewer() {
     setDebugInfo(null); // Clear previous debug info
 
     try {
-      // Use Origin SDK only
-      if (!origin) {
-        setError('Origin SDK not available. Please connect your wallet.');
-        return;
-      }
-      
-      console.log('🔍 Starting Origin SDK search for registered content...');
-      console.log('🔍 Search input:', input);
+      console.log('🔍 Starting search for:', input.trim());
       console.log('🔍 Search type:', searchType);
-      console.log('🔍 Origin object:', origin);
-      console.log('🔍 Available origin methods:', Object.getOwnPropertyNames(origin));
       
-      // Use only the valid Origin SDK method
-      let uploads = [];
+      // For now, we'll use the API endpoint to search the WritingRegistry subgraph
+      // This allows searching for any user's content, not just the connected user
+      console.log('🔍 Using API endpoint to search WritingRegistry...');
       
-      try {
-        uploads = await origin.getOriginUploads();
-        console.log('🔍 getOriginUploads result:', uploads);
-      } catch (e: unknown) {
-        console.error('🔍 getOriginUploads failed:', e);
-        setError(`Failed to fetch content: ${e instanceof Error ? e.message : 'Unknown error'}`);
-        return;
+      const response = await fetch('/api/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          searchType,
+          searchValue: input.trim(),
+        }),
+      });
+
+      console.log('🔍 Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('🔍 Response error:', errorData);
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
-      
-      console.log('🔍 Final uploads to process:', uploads);
-      console.log('🔍 Uploads length:', uploads?.length || 0);
-      
-      if (!uploads || uploads.length === 0) {
-        setError('No uploads found. This could mean: 1) No content has been registered yet, 2) You need to connect your wallet, 3) The Origin SDK is not returning data correctly.');
-        return;
-      }
-      
-      if (uploads && uploads.length > 0) {
-        console.log('🔍 First upload structure:', uploads[0]);
-        console.log('🔍 Upload keys:', Object.keys(uploads[0] || {}));
-      }
-      
-      // Fetch full content and metadata for each upload
-      let enrichedUploads = [];
-      let fetchErrors = [];
-      console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
-      
-      for (let i = 0; i < uploads.length; i++) {
-        const upload = uploads[i];
-        console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
 
-        try {
-          if (!upload.url) {
-            console.warn(`🔍 Upload ${i + 1} has no URL:`, upload);
-            fetchErrors.push(`Upload ${i + 1}: No URL found`);
-            continue;
-          }
+      const result = await response.json();
+      console.log('🔍 API response:', result);
 
-          console.log('🔍 Fetching content from URL:', upload.url);
-          const response = await fetch(upload.url);
-          console.log('🔍 Response status:', response.status, response.statusText);
-
-          if (response.ok) {
-            const content = await response.text();
-            console.log('🔍 Fetched content length:', content.length);
-            console.log('🔍 Content preview:', content.substring(0, 100) + '...');
-
-            // Parse title (first non-empty line or line starting with Title:)
-            let title = 'Untitled';
-            let twitterHandle = '';
-            const lines = content.split(/\r?\n/);
-            for (let line of lines) {
-              const trimmed = line.trim();
-              if (!twitterHandle) {
-                // Look for Twitter: @handle or @handle
-                const match = trimmed.match(/(?:Twitter:)?\s*(@[\w_]+)/i);
-                if (match) twitterHandle = match[1];
-              }
-              if (title === 'Untitled' && trimmed) {
-                // Prefer a line like Title: ...
-                const titleMatch = trimmed.match(/^Title:\s*(.+)$/i);
-                if (titleMatch) {
-                  title = titleMatch[1];
-                  continue;
-                }
-                // Otherwise, use the first non-empty line
-                title = trimmed;
-              }
-              if (title !== 'Untitled' && twitterHandle) break;
-            }
-
-            // Use actual creator/owner if available
-            const owner = upload.owner || address || 'Unknown';
-            const creator = upload.creator || address || 'Unknown';
-
-            const enrichedUpload = {
-              id: `upload-${i}`,
-              url: upload.url,
-              type: upload.type || 'text',
-              content: content,
-              metadata: {
-                title: title,
-                contentHash: `0x${Buffer.from(content).toString('hex').substring(0, 64)}`,
-                license: 'All Rights Reserved',
-                twitterHandle: twitterHandle || '',
-              },
-              owner: owner,
-              creator: creator,
-              timestamp: Math.floor(Date.now() / 1000)
-            };
-            enrichedUploads.push(enrichedUpload);
-            console.log('🔍 Successfully enriched upload:', enrichedUpload);
-          } else {
-            console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
-            fetchErrors.push(`Upload ${i + 1}: HTTP ${response.status} - ${response.statusText}`);
-          }
-        } catch (e: unknown) {
-          console.error('🔍 Failed to fetch content for upload:', e);
-          if (e instanceof Error) {
-            console.error('🔍 Error details:', e.message, e.stack);
-            fetchErrors.push(`Upload ${i + 1}: ${e.message}`);
-          } else {
-            fetchErrors.push(`Upload ${i + 1}: Unknown error`);
-          }
-        }
-      }
-      
-      console.log('🔍 Enriched uploads:', enrichedUploads);
-      console.log('🔍 Fetch errors:', fetchErrors);
-      
-      // Filter results based on search criteria
-      let filteredResults = enrichedUploads || [];
-      
-      if (searchType === 'twitter') {
-        const handle = input.trim().replace('@', '').toLowerCase();
-        console.log('🔍 Filtering by Twitter handle:', handle);
-        filteredResults = enrichedUploads.filter((u: any) =>
-          u.metadata?.twitterHandle?.replace('@', '').toLowerCase() === handle
-        );
-      } else if (searchType === 'hash') {
-        const searchHash = input.trim().toLowerCase();
-        console.log('🔍 Filtering by content hash:', searchHash);
-        filteredResults = enrichedUploads.filter((u: any) =>
-          u.metadata?.contentHash?.toLowerCase() === searchHash
-        );
-      } else if (searchType === 'address') {
-        const searchAddress = input.trim().toLowerCase();
-        console.log('🔍 Filtering by wallet address:', searchAddress);
-        filteredResults = enrichedUploads.filter((u: any) =>
-          u.owner?.toLowerCase() === searchAddress || u.creator?.toLowerCase() === searchAddress
-        );
-      }
-      
-      console.log('🔍 Filtered results:', filteredResults);
-      console.log('🔍 Search criteria:', { searchType, input, searchAddress: input.trim().toLowerCase() });
-      
-      // Always set the NFTs, even if filteredResults is empty
-      const finalResults = filteredResults || [];
-      console.log('🔍 Final results to set:', finalResults);
-      console.log('🔍 Final results length:', finalResults.length);
-      
-      // If no filtered results but we have raw uploads, create sample data for testing
-      if (finalResults.length === 0 && uploads && uploads.length > 0) {
-        console.log('🔍 Creating sample data from raw uploads for testing');
-        const sampleResults = uploads.map((upload: any, index: number) => ({
-          id: `sample-${index}`,
-          url: upload.url || '',
-          type: upload.type || 'text',
-          content: `Sample content ${index + 1}`,
-          metadata: {
-            title: `Sample Title ${index + 1}`,
-            contentHash: `0x${Math.random().toString(16).substring(2, 66)}`,
-            license: 'All Rights Reserved',
-            twitterHandle: `@sampleuser${index + 1}`,
-          },
-          owner: address || 'Unknown',
-          creator: address || 'Unknown',
-          timestamp: Math.floor(Date.now() / 1000)
-        }));
-        console.log('🔍 Created sample results:', sampleResults);
-        setNfts(sampleResults);
+      if (result.success && result.data) {
+        console.log('🔍 Setting results:', result.data);
+        setNfts(result.data);
         setError(''); // Clear any previous errors
         setDebugInfo(null);
-        return;
-      }
-      
-      setNfts(finalResults);
-      
-      if (finalResults.length === 0) {
-        console.log('🔍 No results to display, setting error');
-        let errorMsg = `No registered content found for ${searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}: ${input.trim()}`;
-        if (fetchErrors.length > 0) {
-          errorMsg += `\n\nFetch errors: ${fetchErrors.slice(0, 3).join(', ')}${fetchErrors.length > 3 ? '...' : ''}`;
-        }
-        setError(errorMsg);
         
-        // Store debug information
-        setDebugInfo({
-          uploads: uploads,
-          enrichedUploads: enrichedUploads,
-          filteredResults: filteredResults,
-          fetchErrors: fetchErrors,
-          searchCriteria: { searchType, input },
-          originAvailable: !!origin,
-          authenticated: true
-        });
+        if (result.data.length === 0) {
+          // No results found - show appropriate message based on search type
+          if (searchType === 'address') {
+            setError(`No content found for wallet address: ${input.trim()}. Please register content first.`);
+          } else if (searchType === 'twitter') {
+            setError(`No content found for Twitter handle: ${input.trim()}. Please register content with this handle first.`);
+          } else if (searchType === 'hash') {
+            setError(`No content found for hash: ${input.trim()}. Please register content first.`);
+          } else {
+            setError('No content found. Please register content first.');
+          }
+        }
       } else {
-        console.log('🔍 Successfully set', finalResults.length, 'items to display');
-        console.log('🔍 Clearing error and debug info');
-        setError(''); // Clear any previous errors
-        setDebugInfo(null);
+        console.error('🔍 API returned error:', result.error);
+        setError(result.error || 'Failed to fetch data from WritingRegistry');
       }
     } catch (e: unknown) {
       console.error('❌ Search error:', e);
