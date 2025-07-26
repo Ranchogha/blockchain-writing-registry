@@ -109,41 +109,16 @@ export function RegistryViewer() {
         console.log('🔍 Origin object:', origin);
         console.log('🔍 Available origin methods:', Object.getOwnPropertyNames(origin));
         
-        // Try different Origin SDK methods to get content
+        // Use only the valid Origin SDK method
         let uploads = [];
         
         try {
-          // Method 1: getOriginUploads
           uploads = await origin.getOriginUploads();
           console.log('🔍 getOriginUploads result:', uploads);
         } catch (e: any) {
           console.log('🔍 getOriginUploads failed:', e);
-        }
-        
-        // If getOriginUploads is empty, try other methods
-        if (!uploads || uploads.length === 0) {
-          try {
-            // Method 2: Try to get user's uploads
-            if (origin.getUserUploads) {
-              uploads = await origin.getUserUploads();
-              console.log('🔍 getUserUploads result:', uploads);
-            }
-          } catch (e: any) {
-            console.log('🔍 getUserUploads failed:', e);
-          }
-        }
-        
-        // If still empty, try to get all content
-        if (!uploads || uploads.length === 0) {
-          try {
-            // Method 3: Try to get all content
-            if (origin.getAllContent) {
-              uploads = await origin.getAllContent();
-              console.log('🔍 getAllContent result:', uploads);
-            }
-          } catch (e: any) {
-            console.log('🔍 getAllContent failed:', e);
-          }
+          setError(`Failed to fetch content: ${e.message || 'Unknown error'}`);
+          return;
         }
         
         console.log('🔍 Final uploads to process:', uploads);
@@ -184,6 +159,8 @@ export function RegistryViewer() {
         
         if (!filtered || filtered.length === 0) {
           setError(`No registered content found for this search. (Searched ${uploads?.length || 0} total items)`);
+          // Show raw data for debugging
+          console.log('🔍 Raw uploads data for debugging:', JSON.stringify(uploads, null, 2));
         }
       } else {
         // Use WritingRegistry contract (mock data for now)
@@ -217,7 +194,7 @@ export function RegistryViewer() {
           setError('No WritingRegistry content found for this search.');
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('❌ Search error:', e);
       setError(`Error searching for content: ${e.message || 'Unknown error'}`);
     } finally {
