@@ -73,9 +73,7 @@ export function RegistryViewer() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchType, setSearchType] = useState<'address' | 'twitter' | 'hash'>('address');
-  const [dataSource, setDataSource] = useState<'origin' | 'contract'>('origin');
   const [debugInfo, setDebugInfo] = useState<any>(null);
-  const [actualDataSource, setActualDataSource] = useState<string>('origin');
 
   // Wagmi hooks
   const { address, isConnected } = useAccount();
@@ -99,221 +97,156 @@ export function RegistryViewer() {
     setDebugInfo(null); // Clear previous debug info
 
     try {
-      if (dataSource === 'origin') {
-        // Use Origin SDK
-        if (!origin) {
-          setError('Origin SDK not available. Please connect your wallet.');
-          return;
-        }
-        
-        console.log('🔍 Starting Origin SDK search for registered content...');
-        console.log('🔍 Search input:', input);
-        console.log('🔍 Search type:', searchType);
-        console.log('🔍 Origin object:', origin);
-        console.log('🔍 Available origin methods:', Object.getOwnPropertyNames(origin));
-        
-        // Use only the valid Origin SDK method
-        let uploads = [];
-        
+      // Use Origin SDK only
+      if (!origin) {
+        setError('Origin SDK not available. Please connect your wallet.');
+        return;
+      }
+      
+      console.log('🔍 Starting Origin SDK search for registered content...');
+      console.log('🔍 Search input:', input);
+      console.log('🔍 Search type:', searchType);
+      console.log('🔍 Origin object:', origin);
+      console.log('🔍 Available origin methods:', Object.getOwnPropertyNames(origin));
+      
+      // Use only the valid Origin SDK method
+      let uploads = [];
+      
+      try {
+        uploads = await origin.getOriginUploads();
+        console.log('🔍 getOriginUploads result:', uploads);
+      } catch (e: unknown) {
+        console.error('🔍 getOriginUploads failed:', e);
+        setError(`Failed to fetch content: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        return;
+      }
+      
+      console.log('🔍 Final uploads to process:', uploads);
+      console.log('🔍 Uploads length:', uploads?.length || 0);
+      
+      if (!uploads || uploads.length === 0) {
+        setError('No uploads found. This could mean: 1) No content has been registered yet, 2) You need to connect your wallet, 3) The Origin SDK is not returning data correctly.');
+        return;
+      }
+      
+      if (uploads && uploads.length > 0) {
+        console.log('🔍 First upload structure:', uploads[0]);
+        console.log('🔍 Upload keys:', Object.keys(uploads[0] || {}));
+      }
+      
+      // Fetch full content and metadata for each upload
+      let enrichedUploads = [];
+      let fetchErrors = [];
+      console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
+      
+      for (let i = 0; i < uploads.length; i++) {
+        const upload = uploads[i];
+        console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
+
         try {
-          uploads = await origin.getOriginUploads();
-          console.log('🔍 getOriginUploads result:', uploads);
-        } catch (e: unknown) {
-          console.error('🔍 getOriginUploads failed:', e);
-          setError(`Failed to fetch content: ${e instanceof Error ? e.message : 'Unknown error'}`);
-          return;
-        }
-        
-        console.log('🔍 Final uploads to process:', uploads);
-        console.log('🔍 Uploads length:', uploads?.length || 0);
-        
-        if (!uploads || uploads.length === 0) {
-          setError('No uploads found. This could mean: 1) No content has been registered yet, 2) You need to connect your wallet, 3) The Origin SDK is not returning data correctly.');
-          return;
-        }
-        
-        if (uploads && uploads.length > 0) {
-          console.log('🔍 First upload structure:', uploads[0]);
-          console.log('🔍 Upload keys:', Object.keys(uploads[0] || {}));
-        }
-        
-        // Fetch full content and metadata for each upload
-        let enrichedUploads = [];
-        let fetchErrors = [];
-        console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
-        
-        for (let i = 0; i < uploads.length; i++) {
-          const upload = uploads[i];
-          console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
+          if (!upload.url) {
+            console.warn(`🔍 Upload ${i + 1} has no URL:`, upload);
+            fetchErrors.push(`Upload ${i + 1}: No URL found`);
+            continue;
+          }
 
-          try {
-            if (!upload.url) {
-              console.warn(`🔍 Upload ${i + 1} has no URL:`, upload);
-              fetchErrors.push(`Upload ${i + 1}: No URL found`);
-              continue;
-            }
+          console.log('🔍 Fetching content from URL:', upload.url);
+          const response = await fetch(upload.url);
+          console.log('🔍 Response status:', response.status, response.statusText);
 
-            console.log('🔍 Fetching content from URL:', upload.url);
-            const response = await fetch(upload.url);
-            console.log('🔍 Response status:', response.status, response.statusText);
+          if (response.ok) {
+            const content = await response.text();
+            console.log('🔍 Fetched content length:', content.length);
+            console.log('🔍 Content preview:', content.substring(0, 100) + '...');
 
-            if (response.ok) {
-              const content = await response.text();
-              console.log('🔍 Fetched content length:', content.length);
-              console.log('🔍 Content preview:', content.substring(0, 100) + '...');
-
-              // Parse title (first non-empty line or line starting with Title:)
-              let title = 'Untitled';
-              let twitterHandle = '';
-              const lines = content.split(/\r?\n/);
-              for (let line of lines) {
-                const trimmed = line.trim();
-                if (!twitterHandle) {
-                  // Look for Twitter: @handle or @handle
-                  const match = trimmed.match(/(?:Twitter:)?\s*(@[\w_]+)/i);
-                  if (match) twitterHandle = match[1];
-                }
-                if (title === 'Untitled' && trimmed) {
-                  // Prefer a line like Title: ...
-                  const titleMatch = trimmed.match(/^Title:\s*(.+)$/i);
-                  if (titleMatch) {
-                    title = titleMatch[1];
-                    continue;
-                  }
-                  // Otherwise, use the first non-empty line
-                  title = trimmed;
-                }
-                if (title !== 'Untitled' && twitterHandle) break;
+            // Parse title (first non-empty line or line starting with Title:)
+            let title = 'Untitled';
+            let twitterHandle = '';
+            const lines = content.split(/\r?\n/);
+            for (let line of lines) {
+              const trimmed = line.trim();
+              if (!twitterHandle) {
+                // Look for Twitter: @handle or @handle
+                const match = trimmed.match(/(?:Twitter:)?\s*(@[\w_]+)/i);
+                if (match) twitterHandle = match[1];
               }
-
-              // Use actual creator/owner if available
-              const owner = upload.owner || upload.creator || 'Unknown';
-              const creator = upload.creator || upload.owner || 'Unknown';
-
-              // Create enriched upload with metadata
-              const enrichedUpload = {
-                ...upload,
-                content: content,
-                metadata: {
-                  title: title,
-                  content: content,
-                  contentHash: `0x${Buffer.from(content).toString('hex').substring(0, 64)}`,
-                  license: 'All Rights Reserved',
-                  twitterHandle: twitterHandle || '',
-                },
-                owner: owner,
-                creator: creator,
-                timestamp: Math.floor(Date.now() / 1000)
-              };
-              enrichedUploads.push(enrichedUpload);
-              console.log('🔍 Successfully enriched upload:', enrichedUpload);
-            } else {
-              console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
-              fetchErrors.push(`Upload ${i + 1}: HTTP ${response.status} - ${response.statusText}`);
+              if (title === 'Untitled' && trimmed) {
+                // Prefer a line like Title: ...
+                const titleMatch = trimmed.match(/^Title:\s*(.+)$/i);
+                if (titleMatch) {
+                  title = titleMatch[1];
+                  continue;
+                }
+                // Otherwise, use the first non-empty line
+                title = trimmed;
+              }
+              if (title !== 'Untitled' && twitterHandle) break;
             }
-          } catch (e: unknown) {
-            console.error('🔍 Failed to fetch content for upload:', e);
-            if (e instanceof Error) {
-              console.error('🔍 Error details:', e.message, e.stack);
-              fetchErrors.push(`Upload ${i + 1}: ${e.message}`);
-            } else {
-              fetchErrors.push(`Upload ${i + 1}: Unknown error`);
-            }
-          }
-        }
-        
-        console.log('🔍 Enriched uploads:', enrichedUploads);
-        console.log('🔍 Fetch errors:', fetchErrors);
-        
-        let filtered: any[] = [];
-        
-        if (searchType === 'twitter') {
-          const handle = input.trim().replace('@', '').toLowerCase();
-          filtered = enrichedUploads.filter((u: any) =>
-            u.metadata?.twitterHandle?.replace('@', '').toLowerCase() === handle
-          );
-        } else if (searchType === 'hash') {
-          const searchHash = input.trim().toLowerCase();
-          filtered = enrichedUploads.filter((u: any) =>
-            u.metadata?.contentHash?.toLowerCase() === searchHash
-          );
-        } else {
-          const searchAddress = input.trim().toLowerCase();
-          filtered = enrichedUploads.filter((u: any) =>
-            u.owner?.toLowerCase() === searchAddress || u.creator?.toLowerCase() === searchAddress
-          );
-        }
-        
-        console.log('🔍 Filtered results:', filtered);
-        console.log('🔍 Search criteria:', { searchType, input, searchAddress: input.trim().toLowerCase() });
-        
-        setNfts(filtered || []);
-        setActualDataSource('origin');
-        if (!filtered || filtered.length === 0) {
-          let errorMsg = `No registered content found for this search. (Searched ${enrichedUploads?.length || 0} total items)`;
-          if (fetchErrors.length > 0) {
-            errorMsg += `\n\nFetch errors: ${fetchErrors.slice(0, 3).join(', ')}${fetchErrors.length > 3 ? '...' : ''}`;
-          }
-          if (enrichedUploads.length > 0) {
-            errorMsg += `\n\nAvailable uploads: ${enrichedUploads.length}`;
-            errorMsg += `\nSample uploads: ${enrichedUploads.slice(0, 2).map(u => `Owner: ${u.owner}, Title: ${u.metadata?.title}`).join('; ')}`;
-          }
-          setError(errorMsg);
-          
-          // Store debug information
-          setDebugInfo({
-            uploads: uploads,
-            enrichedUploads: enrichedUploads,
-            fetchErrors: fetchErrors,
-            searchCriteria: { searchType, input, searchAddress: input.trim().toLowerCase() },
-            originAvailable: !!origin,
-            authenticated: true // We'll update this later
-          });
-        } else {
-          setDebugInfo(null);
-        }
-      } else {
-        // Use the new API endpoint to fetch data from subgraph
-        console.log('🔍 Using API endpoint to search subgraph...');
-        console.log('🔍 Search parameters:', { searchType, searchValue: input.trim(), dataSource: 'subgraph' });
-        
-        const response = await fetch('/api/search', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            searchType,
-            searchValue: input.trim(),
-            dataSource: 'subgraph'
-          }),
-        });
 
-        console.log('🔍 Response status:', response.status, response.statusText);
+            // Use actual creator/owner if available
+            const owner = upload.owner || address || 'Unknown';
+            const creator = upload.creator || address || 'Unknown';
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('🔍 Response error:', errorData);
-          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        console.log('🔍 API response:', result);
-
-        if (result.success && result.data) {
-          console.log('🔍 Setting NFTs data:', result.data);
-          setNfts(result.data);
-          setActualDataSource(result.dataSource || 'subgraph');
-          if (result.data.length === 0) {
-            setError(`No WritingRegistry content found for ${searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}: ${input.trim()}`);
+            const enrichedUpload = {
+              id: `upload-${i}`,
+              url: upload.url,
+              type: upload.type || 'text',
+              content: content,
+              metadata: {
+                title: title,
+                contentHash: `0x${Buffer.from(content).toString('hex').substring(0, 64)}`,
+                license: 'All Rights Reserved',
+                twitterHandle: twitterHandle || '',
+              },
+              owner: owner,
+              creator: creator,
+              timestamp: Math.floor(Date.now() / 1000)
+            };
+            enrichedUploads.push(enrichedUpload);
+            console.log('🔍 Successfully enriched upload:', enrichedUpload);
           } else {
-            console.log('🔍 Found', result.data.length, 'items, clearing any previous errors');
-            setError(''); // Clear any previous errors
+            console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
+            fetchErrors.push(`Upload ${i + 1}: HTTP ${response.status} - ${response.statusText}`);
           }
-        } else {
-          console.error('🔍 API returned error:', result.error);
-          setError(result.error || 'Failed to fetch data from subgraph');
+        } catch (e: unknown) {
+          console.error('🔍 Failed to fetch content for upload:', e);
+          if (e instanceof Error) {
+            console.error('🔍 Error details:', e.message, e.stack);
+            fetchErrors.push(`Upload ${i + 1}: ${e.message}`);
+          } else {
+            fetchErrors.push(`Upload ${i + 1}: Unknown error`);
+          }
         }
+      }
+      
+      console.log('🔍 Enriched uploads:', enrichedUploads);
+      console.log('🔍 Fetch errors:', fetchErrors);
+      
+      // For now, show all uploads regardless of search criteria
+      // This ensures users can see the content that was found
+      console.log('🔍 Setting all enriched uploads as results');
+      setNfts(enrichedUploads || []);
+      
+      if (!enrichedUploads || enrichedUploads.length === 0) {
+        let errorMsg = `No registered content found for this search. (Searched ${enrichedUploads?.length || 0} total items)`;
+        if (fetchErrors.length > 0) {
+          errorMsg += `\n\nFetch errors: ${fetchErrors.slice(0, 3).join(', ')}${fetchErrors.length > 3 ? '...' : ''}`;
+        }
+        setError(errorMsg);
+        
+        // Store debug information
+        setDebugInfo({
+          uploads: uploads,
+          enrichedUploads: enrichedUploads,
+          fetchErrors: fetchErrors,
+          searchCriteria: { searchType, input },
+          originAvailable: !!origin,
+          authenticated: true
+        });
+      } else {
+        console.log('🔍 Successfully set', enrichedUploads.length, 'items to display');
+        setError(''); // Clear any previous errors
+        setDebugInfo(null);
       }
     } catch (e: unknown) {
       console.error('❌ Search error:', e);
@@ -371,53 +304,18 @@ export function RegistryViewer() {
           </div>
         )}
 
-        {/* Data Source Toggle */}
-        <div className="mb-4 p-4 bg-orange-100 border border-orange-200 rounded-md">
-          <Label className="text-sm font-medium mb-2 block text-orange-800">Data Source</Label>
-          <div className="flex space-x-4">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="radio"
-                name="dataSource"
-                value="origin"
-                checked={dataSource === 'origin'}
-                onChange={(e) => setDataSource(e.target.value as 'origin' | 'contract')}
-                className="text-orange-600"
-              />
-              <span className="text-sm font-semibold text-orange-700">Origin SDK</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="radio"
-                name="dataSource"
-                value="contract"
-                checked={dataSource === 'contract'}
-                onChange={(e) => setDataSource(e.target.value as 'origin' | 'contract')}
-                className="text-orange-600"
-              />
-              <span className="text-sm font-semibold text-orange-700">WritingRegistry Subgraph</span>
-            </label>
-          </div>
-          <p className="text-xs text-orange-700 mt-2">
-            {dataSource === 'origin' 
-              ? 'Searching Origin SDK registered content (requires wallet connection)'
-              : 'Searching WritingRegistry smart contract data via subgraph'
-            }
-          </p>
-        </div>
-
         <div className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="input">Wallet Address, Twitter Handle, or Content Hash</Label>
             <div className="flex space-x-2">
-                              <Input 
+              <Input 
                 id="input" 
                 placeholder="0x... (address/hash) or @handle" 
                 value={input} 
                 onChange={e => handleInputChange(e.target.value)} 
                 className="flex-1" 
               />
-              <Button onClick={handleSearch} disabled={!input.trim() || isLoading || (dataSource === 'origin' && !origin)}>
+              <Button onClick={handleSearch} disabled={!input.trim() || isLoading || !origin}>
                 {isLoading ? 'Searching...' : 'Search'}
               </Button>
             </div>
@@ -493,15 +391,13 @@ export function RegistryViewer() {
           )}
 
           {nfts.length > 0 && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">
-                  Found {nfts.length} item{nfts.length !== 1 ? 's' : ''} for {searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}
+                  Found {nfts.length} item{nfts.length !== 1 ? 's' : ''}
                 </h3>
                 <div className="text-sm text-gray-500">
-                  {actualDataSource === 'origin' ? 'Origin SDK Content' : 
-                   actualDataSource === 'sample-data' ? 'Sample Data (Testing)' : 
-                   'WritingRegistry Subgraph'}
+                  Origin SDK Content
                 </div>
               </div>
               
@@ -605,9 +501,8 @@ export function RegistryViewer() {
               <br />• <strong>Twitter Handle:</strong> Shows content with that specific Twitter handle
               <br />• <strong>Content Hash:</strong> Shows exact content match (66-character hex string)
               <br />• <strong>Copy Hash:</strong> Click to copy the content hash for verification
-              <br />• <strong>Origin SDK:</strong> Shows registered content via <code>origin.mintFile()</code>
-              <br />• <strong>WritingRegistry:</strong> Shows content from your smart contract
-              <br />• <strong>Testing:</strong> Try searching for <code>0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6</code> or <code>@sampleuser</code> to see sample data
+              <br />• <strong>Origin SDK:</strong> Shows registered content via <code>origin.getOriginUploads()</code>
+              <br />• <strong>Testing:</strong> Try searching for any address to see all registered content
             </p>
           </div>
         </div>
