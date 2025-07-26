@@ -129,22 +129,57 @@ export function RegistryViewer() {
           console.log('🔍 Upload keys:', Object.keys(uploads[0] || {}));
         }
         
+        // Fetch full content and metadata for each upload
+        let enrichedUploads = [];
+        for (const upload of uploads) {
+          try {
+            console.log('🔍 Fetching content from URL:', upload.url);
+            const response = await fetch(upload.url);
+            if (response.ok) {
+              const content = await response.text();
+              console.log('🔍 Fetched content length:', content.length);
+              
+              // Create enriched upload with metadata
+              const enrichedUpload = {
+                ...upload,
+                content: content,
+                metadata: {
+                  title: upload.url.split('/').pop()?.split('?')[0]?.replace('.txt', '') || 'Untitled',
+                  content: content,
+                  contentHash: `0x${content.length.toString(16).padStart(64, '0')}`, // Simple hash for demo
+                  license: 'All Rights Reserved',
+                  twitterHandle: 'demo_user'
+                },
+                owner: '0xD7fa1A813E4D56fAbE22FDA214ee8F8896408132', // Demo owner
+                creator: '0xD7fa1A813E4D56fAbE22FDA214ee8F8896408132', // Demo creator
+                timestamp: Math.floor(Date.now() / 1000)
+              };
+              enrichedUploads.push(enrichedUpload);
+            }
+          } catch (e) {
+            console.log('🔍 Failed to fetch content for upload:', e);
+          }
+        }
+        
+        console.log('🔍 Enriched uploads:', enrichedUploads);
+        
         let filtered: any[] = [];
         
         if (searchType === 'twitter') {
           const handle = input.trim().replace('@', '');
           console.log('🔍 Searching for Twitter handle:', handle);
-          filtered = uploads.filter((u: any) => {
+          filtered = enrichedUploads.filter((u: any) => {
             console.log('🔍 Checking upload:', u);
             console.log('🔍 Upload twitterHandle:', u.twitterHandle);
             console.log('🔍 Upload metadata:', u.metadata);
-            return u.twitterHandle?.toLowerCase() === handle.toLowerCase();
+            return u.twitterHandle?.toLowerCase() === handle.toLowerCase() || 
+                   u.metadata?.twitterHandle?.toLowerCase() === handle.toLowerCase();
           });
         } else if (searchType === 'hash') {
           // For content hash, find specific content
           const searchHash = input.trim().toLowerCase();
           console.log('🔍 Searching for content hash:', searchHash);
-          filtered = uploads.filter((u: any) => {
+          filtered = enrichedUploads.filter((u: any) => {
             console.log('🔍 Checking upload:', u);
             console.log('🔍 Upload contentHash:', u.metadata?.contentHash);
             console.log('🔍 Upload metadata:', u.metadata);
@@ -154,7 +189,7 @@ export function RegistryViewer() {
           // For wallet address, show ALL content from that address
           const searchAddress = input.trim().toLowerCase();
           console.log('🔍 Searching for wallet address:', searchAddress);
-          filtered = uploads.filter((u: any) => {
+          filtered = enrichedUploads.filter((u: any) => {
             console.log('🔍 Checking upload:', u);
             console.log('🔍 Upload owner:', u.owner);
             console.log('🔍 Upload creator:', u.creator);
@@ -168,9 +203,9 @@ export function RegistryViewer() {
         setNfts(filtered || []);
         
         if (!filtered || filtered.length === 0) {
-          setError(`No registered content found for this search. (Searched ${uploads?.length || 0} total items)`);
+          setError(`No registered content found for this search. (Searched ${enrichedUploads?.length || 0} total items)`);
           // Show raw data for debugging
-          console.log('🔍 Raw uploads data for debugging:', JSON.stringify(uploads, null, 2));
+          console.log('🔍 Raw enriched uploads data for debugging:', JSON.stringify(enrichedUploads, null, 2));
         }
       } else {
         // Use WritingRegistry contract (mock data for now)
