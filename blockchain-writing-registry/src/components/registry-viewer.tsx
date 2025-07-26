@@ -167,7 +167,7 @@ export function RegistryViewer() {
             } else {
               console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
             }
-          } catch (e) {
+          } catch (e: any) {
             console.error('🔍 Failed to fetch content for upload:', e);
             console.error('🔍 Error details:', e.message, e.stack);
           }
