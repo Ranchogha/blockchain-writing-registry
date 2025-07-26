@@ -4,11 +4,14 @@ import { base } from 'viem/chains';
 
 // WritingRegistry contract ABI (just the events we need)
 const WRITING_REGISTRY_ABI = [
-  parseAbiItem('event ProofRegistered(bytes32 indexed hash, address indexed creator, string title, string license, string twitterHandle, uint256 timestamp)')
+  parseAbiItem('event ProofRegistered(string indexed hash, string title, string license, string twitterHandle, uint256 timestamp, address indexed creator)')
 ];
 
-// WritingRegistry contract address on Base
-const WRITING_REGISTRY_ADDRESS = '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6';
+// CAMP Network IPNFT contract address (what Origin SDK uses)
+const CAMP_IPNFT_ADDRESS = '0xF90733b9eCDa3b49C250B2C3E3E42c96fC93324E';
+
+// WritingRegistry contract address (your custom contract)
+const WRITING_REGISTRY_ADDRESS = '0xb9C7cd7158805B03A8ADc999F6C08933E51BD97d';
 
 // Create viem client for Base
 const client = createPublicClient({
@@ -16,35 +19,66 @@ const client = createPublicClient({
   transport: http()
 });
 
-// Function to fetch real data from WritingRegistry contract
+// Function to fetch real data from CAMP IPNFT contract (what Origin SDK uses)
 async function fetchRealData(searchType: string, searchValue: string) {
   try {
-    console.log('🔍 Fetching real data from WritingRegistry contract...');
+    console.log('🔍 Fetching real data from CAMP IPNFT contract...');
+    console.log('🔍 CAMP IPNFT contract address:', CAMP_IPNFT_ADDRESS);
+    
+    // First, check if the CAMP IPNFT contract exists
+    const code = await client.getBytecode({ address: CAMP_IPNFT_ADDRESS });
+    if (!code || code === '0x') {
+      console.log('🔍 No CAMP IPNFT contract found at address:', CAMP_IPNFT_ADDRESS);
+      return [];
+    }
+    console.log('🔍 CAMP IPNFT contract found at address:', CAMP_IPNFT_ADDRESS);
     
     // Get the latest block number
     const latestBlock = await client.getBlockNumber();
     console.log('🔍 Latest block:', latestBlock);
     
-    // Get logs from the last 10000 blocks (adjust as needed)
-    const fromBlock = latestBlock - 10000n;
+    // Look at recent blocks for IPNFT minting events
+    const fromBlock = latestBlock - 10000n; // Last 10,000 blocks should be enough
     const toBlock = latestBlock;
     
-    console.log('🔍 Fetching logs from blocks', fromBlock, 'to', toBlock);
+    console.log('🔍 Fetching IPNFT events from blocks', fromBlock, 'to', toBlock);
     
-    const logs = await client.getLogs({
-      address: WRITING_REGISTRY_ADDRESS,
-      event: WRITING_REGISTRY_ABI[0],
+    // Try to get Transfer events (NFT minting creates Transfer events)
+    const transferLogs = await client.getLogs({
+      address: CAMP_IPNFT_ADDRESS,
+      event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
       fromBlock,
       toBlock,
     });
     
-    console.log('🔍 Found', logs.length, 'ProofRegistered events');
+    console.log('🔍 Found', transferLogs.length, 'Transfer events from CAMP IPNFT');
     
-    // Transform logs to the expected format
-    const realData = logs.map((log, index) => {
+    // Also try to get any other events that might contain content data
+    const allLogs = await client.getLogs({
+      address: CAMP_IPNFT_ADDRESS,
+      fromBlock,
+      toBlock,
+    });
+    
+    console.log('🔍 Found', allLogs.length, 'total events from CAMP IPNFT');
+    
+    // For now, let's also check your WritingRegistry contract
+    console.log('🔍 Also checking WritingRegistry contract:', WRITING_REGISTRY_ADDRESS);
+    
+    const writingRegistryLogs = await client.getLogs({
+      address: WRITING_REGISTRY_ADDRESS,
+      event: parseAbiItem('event ProofRegistered(string indexed hash, string title, string license, string twitterHandle, uint256 timestamp, address indexed creator)'),
+      fromBlock,
+      toBlock,
+    });
+    
+    console.log('🔍 Found', writingRegistryLogs.length, 'ProofRegistered events from WritingRegistry');
+    
+    // Transform WritingRegistry logs to the expected format
+    const realData = writingRegistryLogs.map((log, index) => {
       const { hash, creator, title, license, twitterHandle, timestamp } = log.args;
       return {
-        id: `real-${index}`,
+        id: `registry-${index}`,
         hash: hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
         title: title || 'Untitled',
         license: license || 'All Rights Reserved',
@@ -62,7 +96,7 @@ async function fetchRealData(searchType: string, searchValue: string) {
       };
     });
     
-    console.log('🔍 Transformed real data:', realData);
+    console.log('🔍 Transformed real data from WritingRegistry:', realData);
     return realData;
   } catch (error) {
     console.error('🔍 Error fetching real data:', error);
