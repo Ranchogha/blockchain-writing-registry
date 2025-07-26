@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Hash, FileText, UploadCloud } from 'lucide-react';
+import { Hash, FileText } from 'lucide-react';
 import CryptoJS from 'crypto-js';
 import Image from 'next/image';
 import { useAuth, useAuthState } from '@campnetwork/origin/react';
@@ -279,7 +279,7 @@ export function ContentSubmission() {
               </div>
             ) : (
               <div className="flex items-center space-x-2">
-                <UploadCloud className="h-4 w-4" />
+                <span className="text-lg">↑</span>
                 <span>Register Content</span>
               </div>
             )}
