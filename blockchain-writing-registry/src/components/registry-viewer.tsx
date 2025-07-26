@@ -94,59 +94,90 @@ export function RegistryViewer() {
     setIsLoading(true);
     setError('');
     setNfts([]);
-    setDebugInfo(null); // Clear previous debug info
+    setDebugInfo(null);
 
     try {
       console.log('🔍 Starting search for:', input.trim());
       console.log('🔍 Search type:', searchType);
-      
-      // For now, we'll use the API endpoint to search the WritingRegistry subgraph
-      // This allows searching for any user's content, not just the connected user
-      console.log('🔍 Using API endpoint to search WritingRegistry...');
-      
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          searchType,
-          searchValue: input.trim(),
-        }),
-      });
 
-      console.log('🔍 Response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('🔍 Response error:', errorData);
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      // Use Origin SDK to fetch uploads
+      console.log('🔍 Using Origin SDK to fetch uploads...');
+      
+      if (!origin) {
+        throw new Error('Origin SDK not available. Please connect your wallet.');
       }
 
-      const result = await response.json();
-      console.log('🔍 API response:', result);
+      const uploads = await origin.getOriginUploads();
+      console.log('🔍 Origin uploads fetched:', uploads);
 
-      if (result.success && result.data) {
-        console.log('🔍 Setting results:', result.data);
-        setNfts(result.data);
+      if (!uploads || uploads.length === 0) {
+        console.log('🔍 No uploads found');
+        setError('No content found. Please register content first.');
+        return;
+      }
+
+      // Transform uploads to our expected format
+      const transformedData = uploads.map((upload: any, index: number) => ({
+        id: `origin-${index}`,
+        hash: upload.hash || upload.contentHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        title: upload.title || upload.metadata?.title || 'Untitled',
+        license: upload.license || upload.metadata?.license || 'All Rights Reserved',
+        twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || '',
+        timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000),
+        creator: upload.creator || upload.owner || address || '0x0000000000000000000000000000000000000000',
+        blockNumber: upload.blockNumber || '0',
+        transactionHash: upload.transactionHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        metadata: {
+          title: upload.title || upload.metadata?.title || 'Untitled',
+          license: upload.license || upload.metadata?.license || 'All Rights Reserved',
+          twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || '',
+          contentHash: upload.hash || upload.contentHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+        },
+        source: 'Origin SDK'
+      }));
+
+      console.log('🔍 Transformed data:', transformedData);
+
+      // Filter data based on search criteria
+      let filteredData = transformedData;
+      
+      if (searchType === 'address') {
+        const searchAddress = input.trim().toLowerCase();
+        console.log('🔍 Filtering by address:', searchAddress);
+        filteredData = transformedData.filter((item: any) => 
+          item.creator.toLowerCase() === searchAddress
+        );
+      } else if (searchType === 'twitter') {
+        const handle = input.trim().replace('@', '').toLowerCase();
+        console.log('🔍 Filtering by Twitter handle:', handle);
+        filteredData = transformedData.filter((item: any) => 
+          item.twitterHandle.toLowerCase() === handle
+        );
+      } else if (searchType === 'hash') {
+        const searchHash = input.trim().toLowerCase();
+        console.log('🔍 Filtering by hash:', searchHash);
+        filteredData = transformedData.filter((item: any) => 
+          item.hash.toLowerCase() === searchHash
+        );
+      }
+
+      console.log('🔍 Filtered data:', filteredData);
+
+      if (filteredData.length > 0) {
+        setNfts(filteredData);
         setError(''); // Clear any previous errors
         setDebugInfo(null);
-        
-        if (result.data.length === 0) {
-          // No results found - show appropriate message based on search type
-          if (searchType === 'address') {
-            setError(`No content found for wallet address: ${input.trim()}. Please register content first.`);
-          } else if (searchType === 'twitter') {
-            setError(`No content found for Twitter handle: ${input.trim()}. Please register content with this handle first.`);
-          } else if (searchType === 'hash') {
-            setError(`No content found for hash: ${input.trim()}. Please register content first.`);
-          } else {
-            setError('No content found. Please register content first.');
-          }
-        }
       } else {
-        console.error('🔍 API returned error:', result.error);
-        setError(result.error || 'Failed to fetch data from WritingRegistry');
+        // No results found - show appropriate message based on search type
+        if (searchType === 'address') {
+          setError(`No content found for wallet address: ${input.trim()}. Please register content first.`);
+        } else if (searchType === 'twitter') {
+          setError(`No content found for Twitter handle: ${input.trim()}. Please register content with this handle first.`);
+        } else if (searchType === 'hash') {
+          setError(`No content found for hash: ${input.trim()}. Please register content first.`);
+        } else {
+          setError('No content found. Please register content first.');
+        }
       }
     } catch (e: unknown) {
       console.error('❌ Search error:', e);
