@@ -19,7 +19,38 @@ const client = createPublicClient({
   transport: http()
 });
 
-// Function to fetch real data from CAMP IPNFT contract (what Origin SDK uses)
+// Function to fetch metadata from IPFS for IPNFTs
+async function fetchIPNFTMetadata(tokenId: string) {
+  try {
+    // The Origin SDK typically stores metadata at ipfs://{hash}/metadata.json
+    // We need to get the token URI first, then fetch the metadata
+    console.log('🔍 Fetching metadata for IPNFT token:', tokenId);
+    
+    // For now, return basic metadata structure
+    // In a full implementation, you would:
+    // 1. Call tokenURI(tokenId) on the IPNFT contract
+    // 2. Convert ipfs:// to https://ipfs.io/ipfs/
+    // 3. Fetch the metadata JSON
+    return {
+      title: `IPNFT #${tokenId}`,
+      description: 'Content registered through Origin SDK',
+      license: 'All Rights Reserved',
+      twitterHandle: '',
+      contentHash: `0x${tokenId.padStart(64, '0')}`
+    };
+  } catch (error) {
+    console.log('🔍 Error fetching IPNFT metadata:', error);
+    return {
+      title: `IPNFT #${tokenId}`,
+      description: 'Content registered through Origin SDK',
+      license: 'All Rights Reserved',
+      twitterHandle: '',
+      contentHash: `0x${tokenId.padStart(64, '0')}`
+    };
+  }
+}
+
+// Function to fetch real data from both CAMP IPNFT and WritingRegistry contracts
 async function fetchRealData(searchType: string, searchValue: string) {
   try {
     console.log('🔍 Fetching real data from blockchain contracts...');
@@ -35,42 +66,99 @@ async function fetchRealData(searchType: string, searchValue: string) {
     
     console.log('🔍 Fetching events from blocks', fromBlock, 'to', toBlock);
     
-    // Check WritingRegistry contract for ProofRegistered events
+    let allData = [];
+    
+    // 1. Check CAMP IPNFT contract for Transfer events (NFT minting)
+    console.log('🔍 Checking CAMP IPNFT contract:', CAMP_IPNFT_ADDRESS);
+    
+    try {
+      const ipnftTransferLogs = await client.getLogs({
+        address: CAMP_IPNFT_ADDRESS,
+        event: parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'),
+        fromBlock,
+        toBlock,
+      });
+      
+      console.log('🔍 Found', ipnftTransferLogs.length, 'Transfer events from CAMP IPNFT');
+      
+      // Transform IPNFT Transfer events to our format
+      const ipnftData = ipnftTransferLogs.map((log, index) => {
+        const { from, to, tokenId } = log.args;
+        return {
+          id: `ipnft-${index}`,
+          hash: `0x${tokenId?.toString(16).padStart(64, '0')}` || '0x0000000000000000000000000000000000000000000000000000000000000000',
+          title: `IPNFT #${tokenId}`,
+          license: 'All Rights Reserved',
+          twitterHandle: '', // Will be filled from WritingRegistry if available
+          timestamp: Math.floor(Date.now() / 1000),
+          creator: from || '0x0000000000000000000000000000000000000000',
+          owner: to || '0x0000000000000000000000000000000000000000',
+          blockNumber: log.blockNumber?.toString() || '0',
+          transactionHash: log.transactionHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+          metadata: {
+            title: `IPNFT #${tokenId}`,
+            license: 'All Rights Reserved',
+            twitterHandle: '',
+            contentHash: `0x${tokenId?.toString(16).padStart(64, '0')}` || '0x0000000000000000000000000000000000000000000000000000000000000000',
+          },
+          source: 'CAMP_IPNFT'
+        };
+      });
+      
+      allData = [...allData, ...ipnftData];
+      console.log('🔍 Added', ipnftData.length, 'IPNFT records');
+      
+    } catch (error) {
+      console.log('🔍 Error fetching from CAMP IPNFT:', error);
+    }
+    
+    // 2. Check WritingRegistry contract for ProofRegistered events
     console.log('🔍 Checking WritingRegistry contract:', WRITING_REGISTRY_ADDRESS);
     
-    const writingRegistryLogs = await client.getLogs({
-      address: WRITING_REGISTRY_ADDRESS,
-      event: parseAbiItem('event ProofRegistered(string indexed hash, string title, string license, string twitterHandle, uint256 timestamp, address indexed creator)'),
-      fromBlock,
-      toBlock,
-    });
-    
-    console.log('🔍 Found', writingRegistryLogs.length, 'ProofRegistered events from WritingRegistry');
-    
-    // Transform WritingRegistry logs to the expected format
-    const realData = writingRegistryLogs.map((log, index) => {
-      const { hash, creator, title, license, twitterHandle, timestamp } = log.args;
-      return {
-        id: `registry-${index}`,
-        hash: hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        title: title || 'Untitled',
-        license: license || 'All Rights Reserved',
-        twitterHandle: twitterHandle || '',
-        timestamp: timestamp ? Number(timestamp) : Math.floor(Date.now() / 1000),
-        creator: creator || '0x0000000000000000000000000000000000000000',
-        blockNumber: log.blockNumber?.toString() || '0',
-        transactionHash: log.transactionHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        metadata: {
+    try {
+      const writingRegistryLogs = await client.getLogs({
+        address: WRITING_REGISTRY_ADDRESS,
+        event: parseAbiItem('event ProofRegistered(string indexed hash, string title, string license, string twitterHandle, uint256 timestamp, address indexed creator)'),
+        fromBlock,
+        toBlock,
+      });
+      
+      console.log('🔍 Found', writingRegistryLogs.length, 'ProofRegistered events from WritingRegistry');
+      
+      // Transform WritingRegistry logs to the expected format
+      const registryData = writingRegistryLogs.map((log, index) => {
+        const { hash, creator, title, license, twitterHandle, timestamp } = log.args;
+        return {
+          id: `registry-${index}`,
+          hash: hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
           title: title || 'Untitled',
           license: license || 'All Rights Reserved',
           twitterHandle: twitterHandle || '',
-          contentHash: hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        }
-      };
-    });
+          timestamp: timestamp ? Number(timestamp) : Math.floor(Date.now() / 1000),
+          creator: creator || '0x0000000000000000000000000000000000000000',
+          blockNumber: log.blockNumber?.toString() || '0',
+          transactionHash: log.transactionHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+          metadata: {
+            title: title || 'Untitled',
+            license: license || 'All Rights Reserved',
+            twitterHandle: twitterHandle || '',
+            contentHash: hash || '0x0000000000000000000000000000000000000000000000000000000000000000',
+          },
+          source: 'WritingRegistry'
+        };
+      });
+      
+      allData = [...allData, ...registryData];
+      console.log('🔍 Added', registryData.length, 'WritingRegistry records');
+      
+    } catch (error) {
+      console.log('🔍 Error fetching from WritingRegistry:', error);
+    }
     
-    console.log('🔍 Transformed real data from WritingRegistry:', realData);
-    return realData;
+    console.log('🔍 Total real data found:', allData.length, 'items');
+    console.log('🔍 All data:', allData);
+    
+    return allData;
   } catch (error) {
     console.error('🔍 Error fetching real data:', error);
     return [];
