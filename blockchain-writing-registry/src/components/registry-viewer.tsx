@@ -72,7 +72,7 @@ export function RegistryViewer() {
   const [nfts, setNfts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [searchType, setSearchType] = useState<'address' | 'twitter'>('address');
+  const [searchType, setSearchType] = useState<'address' | 'twitter' | 'hash'>('address');
   const [dataSource, setDataSource] = useState<'origin' | 'contract'>('origin');
 
   // Wagmi hooks
@@ -140,6 +140,16 @@ export function RegistryViewer() {
             console.log('🔍 Upload metadata:', u.metadata);
             return u.twitterHandle?.toLowerCase() === handle.toLowerCase();
           });
+        } else if (searchType === 'hash') {
+          // For content hash, find specific content
+          const searchHash = input.trim().toLowerCase();
+          console.log('🔍 Searching for content hash:', searchHash);
+          filtered = uploads.filter((u: any) => {
+            console.log('🔍 Checking upload:', u);
+            console.log('🔍 Upload contentHash:', u.metadata?.contentHash);
+            console.log('🔍 Upload metadata:', u.metadata);
+            return u.metadata?.contentHash?.toLowerCase() === searchHash;
+          });
         } else {
           // For wallet address, show ALL content from that address
           const searchAddress = input.trim().toLowerCase();
@@ -182,6 +192,11 @@ export function RegistryViewer() {
           filtered = mockProofs.filter(proof => 
             proof.twitterHandle?.toLowerCase() === handle.toLowerCase()
           );
+        } else if (searchType === 'hash') {
+          const searchHash = input.trim().toLowerCase();
+          filtered = mockProofs.filter(proof => 
+            proof.hash.toLowerCase() === searchHash
+          );
         } else {
           const searchAddress = input.trim().toLowerCase();
           filtered = mockProofs.filter(proof => 
@@ -209,6 +224,8 @@ export function RegistryViewer() {
       setSearchType('twitter');
     } else if (value.startsWith('0x') && value.length === 42) {
       setSearchType('address');
+    } else if (value.startsWith('0x') && value.length === 66) {
+      setSearchType('hash');
     }
   };
 
@@ -220,7 +237,7 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Enter a wallet address to see all registered content, or Twitter handle for specific content.
+          Enter a wallet address to see all registered content, Twitter handle for specific content, or content hash for exact match.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -280,11 +297,11 @@ export function RegistryViewer() {
 
         <div className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="input">Wallet Address or Twitter Handle</Label>
+            <Label htmlFor="input">Wallet Address, Twitter Handle, or Content Hash</Label>
             <div className="flex space-x-2">
-              <Input 
+                              <Input 
                 id="input" 
-                placeholder="0x... or @handle" 
+                placeholder="0x... (address/hash) or @handle" 
                 value={input} 
                 onChange={e => handleInputChange(e.target.value)} 
                 className="flex-1" 
@@ -294,8 +311,9 @@ export function RegistryViewer() {
               </Button>
             </div>
             <div className="text-sm text-gray-500">
-              Search type: {searchType === 'twitter' ? 'Twitter Handle' : 'Wallet Address'} 
+              Search type: {searchType === 'twitter' ? 'Twitter Handle' : searchType === 'hash' ? 'Content Hash' : 'Wallet Address'} 
               {searchType === 'address' && ' (shows all content for this address)'}
+              {searchType === 'hash' && ' (exact match)'}
             </div>
           </div>
 
@@ -313,7 +331,7 @@ export function RegistryViewer() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">
-                  Found {nfts.length} item{nfts.length !== 1 ? 's' : ''} for {searchType === 'twitter' ? 'Twitter handle' : 'wallet address'}
+                  Found {nfts.length} item{nfts.length !== 1 ? 's' : ''} for {searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}
                 </h3>
                 <div className="text-sm text-gray-500">
                   {dataSource === 'origin' ? 'Origin SDK Content' : 'WritingRegistry Content'}
@@ -418,6 +436,7 @@ export function RegistryViewer() {
               <strong>How it works:</strong> 
               <br />• <strong>Wallet Address:</strong> Shows ALL content registered by that address
               <br />• <strong>Twitter Handle:</strong> Shows content with that specific Twitter handle
+              <br />• <strong>Content Hash:</strong> Shows exact content match (66-character hex string)
               <br />• <strong>Copy Hash:</strong> Click to copy the content hash for verification
               <br />• <strong>Origin SDK:</strong> Shows registered content via <code>origin.mintFile()</code>
               <br />• <strong>WritingRegistry:</strong> Shows content from your smart contract
