@@ -74,6 +74,8 @@ export function RegistryViewer() {
   const [error, setError] = useState('');
   const [searchType, setSearchType] = useState<'address' | 'twitter' | 'hash'>('address');
   const [dataSource, setDataSource] = useState<'origin' | 'contract'>('origin');
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [actualDataSource, setActualDataSource] = useState<string>('origin');
 
   // Wagmi hooks
   const { address, isConnected } = useAccount();
@@ -94,6 +96,7 @@ export function RegistryViewer() {
     setIsLoading(true);
     setError('');
     setNfts([]);
+    setDebugInfo(null); // Clear previous debug info
 
     try {
       if (dataSource === 'origin') {
@@ -115,14 +118,19 @@ export function RegistryViewer() {
         try {
           uploads = await origin.getOriginUploads();
           console.log('🔍 getOriginUploads result:', uploads);
-        } catch (e: any) {
-          console.log('🔍 getOriginUploads failed:', e);
-          setError(`Failed to fetch content: ${e.message || 'Unknown error'}`);
+        } catch (e: unknown) {
+          console.error('🔍 getOriginUploads failed:', e);
+          setError(`Failed to fetch content: ${e instanceof Error ? e.message : 'Unknown error'}`);
           return;
         }
         
         console.log('🔍 Final uploads to process:', uploads);
         console.log('🔍 Uploads length:', uploads?.length || 0);
+        
+        if (!uploads || uploads.length === 0) {
+          setError('No uploads found. This could mean: 1) No content has been registered yet, 2) You need to connect your wallet, 3) The Origin SDK is not returning data correctly.');
+          return;
+        }
         
         if (uploads && uploads.length > 0) {
           console.log('🔍 First upload structure:', uploads[0]);
@@ -131,6 +139,7 @@ export function RegistryViewer() {
         
         // Fetch full content and metadata for each upload
         let enrichedUploads = [];
+        let fetchErrors = [];
         console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
         
         for (let i = 0; i < uploads.length; i++) {
@@ -138,6 +147,12 @@ export function RegistryViewer() {
           console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
 
           try {
+            if (!upload.url) {
+              console.warn(`🔍 Upload ${i + 1} has no URL:`, upload);
+              fetchErrors.push(`Upload ${i + 1}: No URL found`);
+              continue;
+            }
+
             console.log('🔍 Fetching content from URL:', upload.url);
             const response = await fetch(upload.url);
             console.log('🔍 Response status:', response.status, response.statusText);
@@ -194,16 +209,21 @@ export function RegistryViewer() {
               console.log('🔍 Successfully enriched upload:', enrichedUpload);
             } else {
               console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
+              fetchErrors.push(`Upload ${i + 1}: HTTP ${response.status} - ${response.statusText}`);
             }
           } catch (e: unknown) {
             console.error('🔍 Failed to fetch content for upload:', e);
             if (e instanceof Error) {
               console.error('🔍 Error details:', e.message, e.stack);
+              fetchErrors.push(`Upload ${i + 1}: ${e.message}`);
+            } else {
+              fetchErrors.push(`Upload ${i + 1}: Unknown error`);
             }
           }
         }
         
         console.log('🔍 Enriched uploads:', enrichedUploads);
+        console.log('🔍 Fetch errors:', fetchErrors);
         
         let filtered: any[] = [];
         
@@ -223,45 +243,67 @@ export function RegistryViewer() {
             u.owner?.toLowerCase() === searchAddress || u.creator?.toLowerCase() === searchAddress
           );
         }
+        
+        console.log('🔍 Filtered results:', filtered);
+        console.log('🔍 Search criteria:', { searchType, input, searchAddress: input.trim().toLowerCase() });
+        
         setNfts(filtered || []);
+        setActualDataSource('origin');
         if (!filtered || filtered.length === 0) {
-          setError(`No registered content found for this search. (Searched ${enrichedUploads?.length || 0} total items)`);
+          let errorMsg = `No registered content found for this search. (Searched ${enrichedUploads?.length || 0} total items)`;
+          if (fetchErrors.length > 0) {
+            errorMsg += `\n\nFetch errors: ${fetchErrors.slice(0, 3).join(', ')}${fetchErrors.length > 3 ? '...' : ''}`;
+          }
+          if (enrichedUploads.length > 0) {
+            errorMsg += `\n\nAvailable uploads: ${enrichedUploads.length}`;
+            errorMsg += `\nSample uploads: ${enrichedUploads.slice(0, 2).map(u => `Owner: ${u.owner}, Title: ${u.metadata?.title}`).join('; ')}`;
+          }
+          setError(errorMsg);
+          
+          // Store debug information
+          setDebugInfo({
+            uploads: uploads,
+            enrichedUploads: enrichedUploads,
+            fetchErrors: fetchErrors,
+            searchCriteria: { searchType, input, searchAddress: input.trim().toLowerCase() },
+            originAvailable: !!origin,
+            authenticated: true // We'll update this later
+          });
+        } else {
+          setDebugInfo(null);
         }
       } else {
-        // Use WritingRegistry contract (mock data for now)
-        // In a real implementation, you'd need to index events or use a subgraph
-        const mockProofs = [
-          {
-            hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-            title: 'Sample Story from Contract',
-            license: 'All Rights Reserved',
-            twitterHandle: 'sampleuser',
-            timestamp: Math.floor(Date.now() / 1000) - 86400,
-            creator: '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6'
-          }
-        ];
+        // Use the new API endpoint to fetch data from subgraph
+        console.log('🔍 Using API endpoint to search subgraph...');
         
-        let filtered: any[] = [];
-        if (searchType === 'twitter') {
-          const handle = input.trim().replace('@', '');
-          filtered = mockProofs.filter(proof => 
-            proof.twitterHandle?.toLowerCase() === handle.toLowerCase()
-          );
-        } else if (searchType === 'hash') {
-          const searchHash = input.trim().toLowerCase();
-          filtered = mockProofs.filter(proof => 
-            proof.hash.toLowerCase() === searchHash
-          );
-        } else {
-          const searchAddress = input.trim().toLowerCase();
-          filtered = mockProofs.filter(proof => 
-            proof.creator.toLowerCase() === searchAddress
-          );
+        const response = await fetch('/api/search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            searchType,
+            searchValue: input.trim(),
+            dataSource: 'subgraph'
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
-        
-        setNfts(filtered);
-        if (filtered.length === 0) {
-          setError('No WritingRegistry content found for this search.');
+
+        const result = await response.json();
+        console.log('🔍 API response:', result);
+
+        if (result.success && result.data) {
+          setNfts(result.data);
+          setActualDataSource(result.dataSource || 'subgraph');
+          if (result.data.length === 0) {
+            setError(`No WritingRegistry content found for ${searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}: ${input.trim()}`);
+          }
+        } else {
+          setError(result.error || 'Failed to fetch data from subgraph');
         }
       }
     } catch (e: unknown) {
@@ -323,8 +365,36 @@ export function RegistryViewer() {
         {/* Data Source Toggle */}
         <div className="mb-4 p-4 bg-orange-100 border border-orange-200 rounded-md">
           <Label className="text-sm font-medium mb-2 block text-orange-800">Data Source</Label>
-          <div className="text-sm text-orange-700 font-semibold">Origin SDK</div>
-          <p className="text-xs text-orange-700 mt-2">Searching Origin SDK registered content</p>
+          <div className="flex space-x-4">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="dataSource"
+                value="origin"
+                checked={dataSource === 'origin'}
+                onChange={(e) => setDataSource(e.target.value as 'origin' | 'contract')}
+                className="text-orange-600"
+              />
+              <span className="text-sm font-semibold text-orange-700">Origin SDK</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="dataSource"
+                value="contract"
+                checked={dataSource === 'contract'}
+                onChange={(e) => setDataSource(e.target.value as 'origin' | 'contract')}
+                className="text-orange-600"
+              />
+              <span className="text-sm font-semibold text-orange-700">WritingRegistry Subgraph</span>
+            </label>
+          </div>
+          <p className="text-xs text-orange-700 mt-2">
+            {dataSource === 'origin' 
+              ? 'Searching Origin SDK registered content (requires wallet connection)'
+              : 'Searching WritingRegistry smart contract data via subgraph'
+            }
+          </p>
         </div>
 
         <div className="space-y-6">
@@ -359,6 +429,60 @@ export function RegistryViewer() {
             <div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-700">{error}</div>
           )}
 
+          {/* Debug Information Section */}
+          {debugInfo && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold text-yellow-800">🔍 Debug Information</h4>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setDebugInfo(null)}
+                  className="text-xs h-6 px-2"
+                >
+                  Clear
+                </Button>
+              </div>
+              <div className="space-y-2 text-xs text-yellow-700">
+                <div>
+                  <strong>Origin Available:</strong> {debugInfo.originAvailable ? 'Yes' : 'No'}
+                </div>
+                <div>
+                  <strong>Raw Uploads Count:</strong> {debugInfo.uploads?.length || 0}
+                </div>
+                <div>
+                  <strong>Enriched Uploads Count:</strong> {debugInfo.enrichedUploads?.length || 0}
+                </div>
+                <div>
+                  <strong>Fetch Errors:</strong> {debugInfo.fetchErrors?.length || 0}
+                </div>
+                <div>
+                  <strong>Search Criteria:</strong> {JSON.stringify(debugInfo.searchCriteria)}
+                </div>
+                
+                {debugInfo.uploads && debugInfo.uploads.length > 0 && (
+                  <div>
+                    <strong>Sample Raw Upload:</strong>
+                    <pre className="mt-1 p-2 bg-white rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
+                      {JSON.stringify(debugInfo.uploads[0], null, 2)}
+                    </pre>
+                  </div>
+                )}
+                
+                {debugInfo.fetchErrors && debugInfo.fetchErrors.length > 0 && (
+                  <div>
+                    <strong>Fetch Errors:</strong>
+                    <ul className="mt-1 list-disc list-inside">
+                      {debugInfo.fetchErrors.slice(0, 5).map((error: string, idx: number) => (
+                        <li key={idx}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {nfts.length > 0 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -366,7 +490,9 @@ export function RegistryViewer() {
                   Found {nfts.length} item{nfts.length !== 1 ? 's' : ''} for {searchType === 'twitter' ? 'Twitter handle' : searchType === 'hash' ? 'content hash' : 'wallet address'}
                 </h3>
                 <div className="text-sm text-gray-500">
-                  Origin SDK Content
+                  {actualDataSource === 'origin' ? 'Origin SDK Content' : 
+                   actualDataSource === 'sample-data' ? 'Sample Data (Testing)' : 
+                   'WritingRegistry Subgraph'}
                 </div>
               </div>
               
@@ -472,6 +598,7 @@ export function RegistryViewer() {
               <br />• <strong>Copy Hash:</strong> Click to copy the content hash for verification
               <br />• <strong>Origin SDK:</strong> Shows registered content via <code>origin.mintFile()</code>
               <br />• <strong>WritingRegistry:</strong> Shows content from your smart contract
+              <br />• <strong>Testing:</strong> Try searching for <code>0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6</code> or <code>@sampleuser</code> to see sample data
             </p>
           </div>
         </div>
