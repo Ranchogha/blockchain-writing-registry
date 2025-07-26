@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Hash, FileText } from 'lucide-react';
 import CryptoJS from 'crypto-js';
-import Image from 'next/image';
 import { useAuth, useAuthState } from '@campnetwork/origin/react';
 import { TwitterAPI } from '@campnetwork/origin';
 import { useAccount, useChainId, useSwitchChain, useBalance, useWalletClient } from 'wagmi';

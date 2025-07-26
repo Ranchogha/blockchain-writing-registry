@@ -236,7 +236,7 @@ export function RegistryViewer() {
       // If no enriched uploads but we have raw uploads, create sample data for testing
       if (finalResults.length === 0 && uploads && uploads.length > 0) {
         console.log('🔍 Creating sample data from raw uploads for testing');
-        const sampleResults = uploads.map((upload, index) => ({
+        const sampleResults = uploads.map((upload: any, index: number) => ({
           id: `sample-${index}`,
           url: upload.url || '',
           type: upload.type || 'text',
