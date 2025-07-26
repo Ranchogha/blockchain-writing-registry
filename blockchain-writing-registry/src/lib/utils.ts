@@ -48,6 +48,10 @@ export const twitterApi = new TwitterAPI({ apiKey: twitterApiKey });
 export async function fetchUserByUsername(username: string) {
   return twitterApi.fetchUserByUsername(username);
 }
+
+// Note: These methods may not exist on the current TwitterAPI version
+// Commenting out to prevent build errors
+/*
 export async function fetchTweetsByUsername(username: string, page = 1, limit = 10) {
   return twitterApi.fetchTweetsByUsername(username, page, limit);
 }
@@ -78,6 +82,7 @@ export async function fetchFollowsByUsername(username: string, page = 1, limit =
 export async function fetchViewedTweetsByUsername(username: string, page = 1, limit = 10) {
   return twitterApi.fetchViewedTweetsByUsername(username, page, limit);
 }
+*/
 
 // Helper: Assign animal name based on content length
 const INSECTS = ["Ant", "Fly", "Bee", "Mosquito", "Gnat", "Mite", "Flea", "Aphid", "Weevil", "Moth"];
