@@ -131,13 +131,21 @@ export function RegistryViewer() {
         
         // Fetch full content and metadata for each upload
         let enrichedUploads = [];
-        for (const upload of uploads) {
+        console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
+        
+        for (let i = 0; i < uploads.length; i++) {
+          const upload = uploads[i];
+          console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
+          
           try {
             console.log('🔍 Fetching content from URL:', upload.url);
             const response = await fetch(upload.url);
+            console.log('🔍 Response status:', response.status, response.statusText);
+            
             if (response.ok) {
               const content = await response.text();
               console.log('🔍 Fetched content length:', content.length);
+              console.log('🔍 Content preview:', content.substring(0, 100) + '...');
               
               // Create enriched upload with metadata
               const enrichedUpload = {
@@ -155,9 +163,13 @@ export function RegistryViewer() {
                 timestamp: Math.floor(Date.now() / 1000)
               };
               enrichedUploads.push(enrichedUpload);
+              console.log('🔍 Successfully enriched upload:', enrichedUpload);
+            } else {
+              console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
             }
           } catch (e) {
-            console.log('🔍 Failed to fetch content for upload:', e);
+            console.error('🔍 Failed to fetch content for upload:', e);
+            console.error('🔍 Error details:', e.message, e.stack);
           }
         }
         
