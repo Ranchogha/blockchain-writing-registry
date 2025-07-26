@@ -1,6 +1,8 @@
 # ✍️ Blockchain-Based Writing Registry (Origin SDK Edition)
 
 > Protect your words. Prove your authorship. Powered by blockchain and the Origin SDK.
+> 
+> **Latest Update**: Registry viewer search functionality fixed and deployed successfully.
 
 A decentralized application (dApp) that allows writers and content creators to register proof of authorship for written works on-chain by submitting cryptographic hashes of their content. Built for the Camp Network (BaseCAMP), this platform leverages the [Origin SDK](https://docs.campnetwork.xyz/origin-v1/origin-sdk) for seamless NFT minting, authentication, and social (Twitter) integration.
 
