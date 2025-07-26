@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Search, Hash, Calendar, User, FileText, Database, Zap } from 'lucide-react';
+import { Search, Hash, Calendar, User, FileText, Database, Zap, Copy } from 'lucide-react';
 import { useAccount, useChainId, useSwitchChain, useContractReads } from 'wagmi';
 import { toast } from 'react-hot-toast';
 
@@ -80,6 +80,11 @@ export function RegistryViewer() {
   const chainId = useChainId();
   const { switchChain, isPending: isSwitching, error: switchError } = useSwitchChain();
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('Content hash copied to clipboard!');
+  };
+
   const handleSearch = async () => {
     if (!input.trim()) {
       toast.error('Please enter a search term.');
@@ -99,6 +104,8 @@ export function RegistryViewer() {
         }
         
         const uploads = await origin.getOriginUploads();
+        console.log('All Origin uploads:', uploads); // Debug log
+        
         let filtered: any[] = [];
         
         if (searchType === 'twitter') {
@@ -107,12 +114,14 @@ export function RegistryViewer() {
             u.twitterHandle?.toLowerCase() === handle.toLowerCase()
           );
         } else {
+          // For wallet address, show ALL content from that address
           const searchAddress = input.trim().toLowerCase();
           filtered = uploads.filter((u: any) =>
             u.owner?.toLowerCase() === searchAddress
           );
         }
 
+        console.log('Filtered results:', filtered); // Debug log
         setNfts(filtered || []);
         
         if (!filtered || filtered.length === 0) {
@@ -176,7 +185,7 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Search for registered content using Origin SDK or WritingRegistry contract.
+          Enter a wallet address to see all registered content, or Twitter handle for specific content.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -228,8 +237,8 @@ export function RegistryViewer() {
           </div>
           <p className="text-xs text-gray-500 mt-2">
             {dataSource === 'origin' 
-              ? 'Searching Origin SDK NFTs (requires successful mintFile calls)'
-              : 'Searching WritingRegistry contract (requires event indexing)'
+              ? 'Searching Origin SDK NFTs (shows all content for wallet address)'
+              : 'Searching WritingRegistry contract (shows all content for wallet address)'
             }
           </p>
         </div>
@@ -250,7 +259,8 @@ export function RegistryViewer() {
               </Button>
             </div>
             <div className="text-sm text-gray-500">
-              Search type: {searchType === 'twitter' ? 'Twitter Handle' : 'Wallet Address'}
+              Search type: {searchType === 'twitter' ? 'Twitter Handle' : 'Wallet Address'} 
+              {searchType === 'address' && ' (shows all content for this address)'}
             </div>
           </div>
 
@@ -266,12 +276,32 @@ export function RegistryViewer() {
 
           {nfts.length > 0 && (
             <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">
+                  Found {nfts.length} item{nfts.length !== 1 ? 's' : ''} for {searchType === 'twitter' ? 'Twitter handle' : 'wallet address'}
+                </h3>
+                <div className="text-sm text-gray-500">
+                  {dataSource === 'origin' ? 'Origin SDK NFTs' : 'WritingRegistry Content'}
+                </div>
+              </div>
+              
               {nfts.map((nft, idx) => (
-                <Card key={nft.id || nft.hash || idx}>
+                <Card key={nft.id || nft.hash || idx} className="border-l-4 border-l-blue-500">
                   <CardHeader>
-                    <CardTitle className="flex items-center space-x-2">
-                      <FileText className="h-5 w-5" />
-                      <span>{dataSource === 'origin' ? (nft.metadata?.title || 'Untitled') : (nft.title || 'Untitled')}</span>
+                    <CardTitle className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-5 w-5" />
+                        <span>{dataSource === 'origin' ? (nft.metadata?.title || 'Untitled') : (nft.title || 'Untitled')}</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copyToClipboard(dataSource === 'origin' ? (nft.metadata?.contentHash || 'N/A') : nft.hash)}
+                        className="flex items-center space-x-2"
+                      >
+                        <Copy className="h-4 w-4" />
+                        <span>Copy Hash</span>
+                      </Button>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -350,10 +380,12 @@ export function RegistryViewer() {
           {/* Info about data sources */}
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-blue-700">
             <p className="text-sm">
-              <strong>Data Sources:</strong> 
+              <strong>How it works:</strong> 
+              <br />• <strong>Wallet Address:</strong> Shows ALL content registered by that address
+              <br />• <strong>Twitter Handle:</strong> Shows content with that specific Twitter handle
+              <br />• <strong>Copy Hash:</strong> Click to copy the content hash for verification
               <br />• <strong>Origin SDK:</strong> Shows NFTs minted via <code>origin.mintFile()</code>
-              <br />• <strong>WritingRegistry Contract:</strong> Shows content registered via your smart contract
-              <br />• <strong>Note:</strong> If no content appears, it means no successful registrations have been made yet.
+              <br />• <strong>WritingRegistry:</strong> Shows content from your smart contract
             </p>
           </div>
         </div>
