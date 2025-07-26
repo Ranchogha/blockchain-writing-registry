@@ -2,6 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http, parseAbiItem } from 'viem';
 import { base } from 'viem/chains';
 
+// Define the data structure type
+interface ContentData {
+  id: string;
+  hash: string;
+  title: string;
+  license: string;
+  twitterHandle: string;
+  timestamp: number;
+  creator: string;
+  owner?: string;
+  blockNumber: string;
+  transactionHash: string;
+  metadata: {
+    title: string;
+    license: string;
+    twitterHandle: string;
+    contentHash: string;
+  };
+  source: string;
+}
+
 // WritingRegistry contract ABI (just the events we need)
 const WRITING_REGISTRY_ABI = [
   parseAbiItem('event ProofRegistered(string indexed hash, string title, string license, string twitterHandle, uint256 timestamp, address indexed creator)')
@@ -66,7 +87,7 @@ async function fetchRealData(searchType: string, searchValue: string) {
     
     console.log('🔍 Fetching events from blocks', fromBlock, 'to', toBlock);
     
-    let allData = [];
+    let allData: ContentData[] = [];
     
     // 1. Check CAMP IPNFT contract for Transfer events (NFT minting)
     console.log('🔍 Checking CAMP IPNFT contract:', CAMP_IPNFT_ADDRESS);
@@ -82,7 +103,7 @@ async function fetchRealData(searchType: string, searchValue: string) {
       console.log('🔍 Found', ipnftTransferLogs.length, 'Transfer events from CAMP IPNFT');
       
       // Transform IPNFT Transfer events to our format
-      const ipnftData = ipnftTransferLogs.map((log, index) => {
+      const ipnftData: ContentData[] = ipnftTransferLogs.map((log, index) => {
         const { from, to, tokenId } = log.args;
         return {
           id: `ipnft-${index}`,
@@ -126,7 +147,7 @@ async function fetchRealData(searchType: string, searchValue: string) {
       console.log('🔍 Found', writingRegistryLogs.length, 'ProofRegistered events from WritingRegistry');
       
       // Transform WritingRegistry logs to the expected format
-      const registryData = writingRegistryLogs.map((log, index) => {
+      const registryData: ContentData[] = writingRegistryLogs.map((log, index) => {
         const { hash, creator, title, license, twitterHandle, timestamp } = log.args;
         return {
           id: `registry-${index}`,
