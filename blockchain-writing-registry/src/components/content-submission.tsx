@@ -254,7 +254,7 @@ export function ContentSubmission() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="twitter">Twitter Handle (Optional)</Label>
+            <Label htmlFor="twitter">Twitter Handle</Label>
             <Input
               id="twitter"
               placeholder="@yourhandle"
@@ -274,7 +274,7 @@ export function ContentSubmission() {
             disabled={!content.trim() || !title.trim() || !license || isWriting || !isConnected || chainId !== CAMP_CHAIN_ID}
             className="w-full"
           >
-            {isWriting ? 'Registering on Blockchain...' : 'Register on WritingRegistry Contract'}
+            {isWriting ? 'Registering on Blockchain...' : 'Register Content'}
           </Button>
 
           {isSuccess && txHash && (

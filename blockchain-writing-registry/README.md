@@ -134,8 +134,8 @@ A decentralized application (dApp) that allows writers and content creators to r
    - Paste your written content
    - Add a title
    - Select a license type
-   - Optionally add your Twitter handle
-4. **Submit** - This will:
+   - Add your Twitter handle (without @ symbol)
+4. **Click "Register Content"** - This will:
    - Generate a SHA-256 hash of your content
    - Call `registerProof` on the WritingRegistry contract
    - Upload content to Origin SDK for display
@@ -148,6 +148,7 @@ A decentralized application (dApp) that allows writers and content creators to r
    - Check Origin SDK for content display
    - Show combined results with Origin's beautiful UI
 3. **View results** with verification status and content preview
+4. **How it works**: Enter the content hash, search and confirm your content has been uploaded.
 
 ---
 

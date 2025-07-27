@@ -395,7 +395,7 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Enter a content hash (66 chars) to search. Uses Origin SDK UI + WritingRegistry contract backend.
+          Enter a content hash (66 chars) to search.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -437,14 +437,14 @@ export function RegistryViewer() {
                 {isLoading ? 'Searching...' : 'Search'}
               </Button>
             </div>
-            <div className="text-sm text-blue-600 font-medium">
+            <div className="text-sm text-orange-600 font-medium">
               💡 Enter a 66-character hex string to find exact content match.
             </div>
           </div>
 
           {isLoading && (
             <div className="flex items-center justify-center p-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
             </div>
           )}
 
@@ -518,7 +518,7 @@ export function RegistryViewer() {
               </div>
               
               {nfts.map((item, idx) => (
-                <Card key={item.id || item.hash || idx} className="border-l-4 border-l-blue-500">
+                <Card key={item.id || item.hash || idx} className="border-l-4 border-l-orange-500">
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
@@ -528,7 +528,7 @@ export function RegistryViewer() {
                           <span className="text-xs text-green-500">✓ On Blockchain</span>
                         )}
                         {item.originData && (
-                          <span className="text-xs text-blue-500">✓ Origin Content</span>
+                          <span className="text-xs text-orange-500">✓ Origin Content</span>
                         )}
                       </div>
                       <Button
@@ -556,7 +556,7 @@ export function RegistryViewer() {
                           <User className="h-4 w-4 text-gray-500" />
                           <div className="flex flex-col">
                             {item.creator && item.creator !== 'Unknown' && !item.creator.startsWith('0x') ? (
-                              <span className="text-sm text-blue-600 font-medium">
+                              <span className="text-sm text-orange-600 font-medium">
                                 @{item.creator}
                               </span>
                             ) : (
@@ -594,7 +594,7 @@ export function RegistryViewer() {
                         )}
                       </div>
                       {item.hash && (
-                        <p className="text-xs text-blue-600 mt-1">
+                        <p className="text-xs text-orange-600 mt-1">
                           💡 Copy this hash to search for this exact content in the registry viewer
                         </p>
                       )}
@@ -613,7 +613,7 @@ export function RegistryViewer() {
                     {item.twitterHandle && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Twitter Handle</Label>
-                        <p className="text-sm text-blue-600">
+                        <p className="text-sm text-orange-600">
                           @{item.twitterHandle}
                         </p>
                       </div>
@@ -652,9 +652,9 @@ export function RegistryViewer() {
                           </div>
                         </div>
                         {item.verification.blockchainData && (
-                          <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
-                            <strong>Blockchain Data:</strong>
-                            <pre className="mt-1 overflow-x-auto">
+                          <div className="mt-2 p-2 bg-black rounded text-xs">
+                            <strong className="text-white">Blockchain Data:</strong>
+                            <pre className="mt-1 overflow-x-auto text-green-400">
                               {JSON.stringify(item.verification.blockchainData, null, 2)}
                             </pre>
                           </div>
@@ -680,14 +680,11 @@ export function RegistryViewer() {
           )}
 
           {/* Info about data sources */}
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-blue-700">
+          <div className="p-4 bg-orange-50 border border-orange-200 rounded-md text-orange-700">
             <p className="text-sm">
               <strong>How it works:</strong> 
-              <br />• <strong>WritingRegistry Backend:</strong> All transactions use your smart contract for blockchain verification
-              <br />• <strong>Origin SDK UI:</strong> Beautiful content display and interface powered by Origin SDK
-              <br />• <strong>Twitter Handle Creator:</strong> Twitter handles are displayed as creators when available
-              <br />• <strong>Hybrid Search:</strong> Checks both WritingRegistry contract and Origin SDK for complete data
-              <br />• <strong>Best of Both:</strong> Origin&apos;s UI + Your smart contract&apos;s functionality
+              <br />Enter the content hash, search and confirm your content has been uploaded.
+              <br />Thank you for registering your content.
             </p>
           </div>
         </div>
