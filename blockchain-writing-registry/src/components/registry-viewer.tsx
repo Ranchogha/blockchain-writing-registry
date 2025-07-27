@@ -107,8 +107,31 @@ export function RegistryViewer() {
         throw new Error('Origin SDK not available. Please connect your wallet.');
       }
 
-      const uploads = await origin.getOriginUploads();
-      console.log('🔍 Origin uploads fetched:', uploads);
+      console.log('🔍 Starting Origin SDK search for registered content...');
+      console.log('🔍 Search input:', input);
+      console.log('🔍 Search type:', searchType);
+      console.log('🔍 Origin object:', origin);
+      console.log('🔍 Available origin methods:', Object.getOwnPropertyNames(origin));
+      
+      // Use only the valid Origin SDK method
+      let uploads = [];
+      
+      try {
+        uploads = await origin.getOriginUploads();
+        console.log('🔍 getOriginUploads result:', uploads);
+      } catch (e: any) {
+        console.log('🔍 getOriginUploads failed:', e);
+        setError(`Failed to fetch content: ${e.message || 'Unknown error'}`);
+        return;
+      }
+      
+      console.log('🔍 Final uploads to process:', uploads);
+      console.log('🔍 Uploads length:', uploads?.length || 0);
+      
+      if (uploads && uploads.length > 0) {
+        console.log('🔍 First upload structure:', uploads[0]);
+        console.log('🔍 Upload keys:', Object.keys(uploads[0] || {}));
+      }
 
       if (!uploads || uploads.length === 0) {
         console.log('🔍 No uploads found');
@@ -116,49 +139,123 @@ export function RegistryViewer() {
         return;
       }
 
-      // Transform uploads to our expected format
-      const transformedData = uploads.map((upload: any, index: number) => ({
-        id: `origin-${index}`,
-        hash: upload.hash || upload.contentHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        title: upload.title || upload.metadata?.title || 'Untitled',
-        license: upload.license || upload.metadata?.license || 'All Rights Reserved',
-        twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || '',
-        timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000),
-        creator: upload.creator || upload.owner || address || '0x0000000000000000000000000000000000000000',
-        blockNumber: upload.blockNumber || '0',
-        transactionHash: upload.transactionHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        metadata: {
-          title: upload.title || upload.metadata?.title || 'Untitled',
-          license: upload.license || upload.metadata?.license || 'All Rights Reserved',
-          twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || '',
-          contentHash: upload.hash || upload.contentHash || '0x0000000000000000000000000000000000000000000000000000000000000000',
-        },
-        source: 'Origin SDK'
-      }));
+      // Fetch full content and metadata for each upload
+      let enrichedUploads = [];
+      console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
+      
+      for (let i = 0; i < uploads.length; i++) {
+        const upload = uploads[i];
+        console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
 
-      console.log('🔍 Transformed data:', transformedData);
+        try {
+          console.log('🔍 Fetching content from URL:', upload.url);
+          const response = await fetch(upload.url);
+          console.log('🔍 Response status:', response.status, response.statusText);
 
+          if (response.ok) {
+            const content = await response.text();
+            console.log('🔍 Fetched content length:', content.length);
+            console.log('🔍 Content preview:', content.substring(0, 100) + '...');
+
+            // Parse title (first non-empty line or line starting with Title:)
+            let title = upload.title || upload.metadata?.title || 'Untitled';
+            let twitterHandle = upload.twitterHandle || upload.metadata?.twitterHandle || '';
+            
+            // Only parse from content if title is still 'Untitled' or no Twitter handle found
+            if (title === 'Untitled' || !twitterHandle) {
+              const lines = content.split(/\r?\n/);
+              for (let line of lines) {
+                const trimmed = line.trim();
+                if (!twitterHandle) {
+                  // Look for Twitter: @handle or @handle
+                  const match = trimmed.match(/(?:Twitter:)?\s*(@[\w_]+)/i);
+                  if (match) twitterHandle = match[1];
+                }
+                if (title === 'Untitled' && trimmed) {
+                  // Prefer a line like Title: ...
+                  const titleMatch = trimmed.match(/^Title:\s*(.+)$/i);
+                  if (titleMatch) {
+                    title = titleMatch[1];
+                    continue;
+                  }
+                  // Otherwise, use the first non-empty line
+                  title = trimmed;
+                }
+                if (title !== 'Untitled' && twitterHandle) break;
+              }
+            }
+
+            // Use actual creator/owner if available
+            const owner = upload.owner || upload.creator || 'Unknown';
+            const creator = upload.creator || upload.owner || 'Unknown';
+
+            // Create enriched upload with metadata
+            const enrichedUpload = {
+              ...upload,
+              content: content,
+              metadata: {
+                title: title,
+                content: content,
+                contentHash: upload.hash || upload.contentHash || `0x${Buffer.from(content).toString('hex').substring(0, 64)}`,
+                license: upload.license || upload.metadata?.license || 'All Rights Reserved',
+                twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || twitterHandle || '',
+              },
+              owner: owner,
+              creator: creator,
+              timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000)
+            };
+            enrichedUploads.push(enrichedUpload);
+            console.log('🔍 Successfully enriched upload:', enrichedUpload);
+          } else {
+            console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
+          }
+        } catch (e: unknown) {
+          console.error('🔍 Failed to fetch content for upload:', e);
+          if (e instanceof Error) {
+            console.error('🔍 Error details:', e.message, e.stack);
+          }
+        }
+      }
+      
+      console.log('🔍 Enriched uploads:', enrichedUploads);
+      
       // Filter data based on search criteria
-      let filteredData = transformedData;
+      let filteredData = enrichedUploads;
       
       if (searchType === 'address') {
         const searchAddress = input.trim().toLowerCase();
         console.log('🔍 Filtering by address:', searchAddress);
-        filteredData = transformedData.filter((item: any) => 
-          item.creator.toLowerCase() === searchAddress
+        filteredData = enrichedUploads.filter((item: any) => 
+          item.creator.toLowerCase() === searchAddress || item.owner.toLowerCase() === searchAddress
         );
+        
+        // If searching for a different address than the connected user
+        if (searchAddress !== address?.toLowerCase() && filteredData.length === 0) {
+          setError(`No content found for wallet address: ${input.trim()}. This address may not have registered any content, or you may need to connect with that wallet to view its content.`);
+          return;
+        }
       } else if (searchType === 'twitter') {
         const handle = input.trim().replace('@', '').toLowerCase();
         console.log('🔍 Filtering by Twitter handle:', handle);
-        filteredData = transformedData.filter((item: any) => 
-          item.twitterHandle.toLowerCase() === handle
+        filteredData = enrichedUploads.filter((item: any) => 
+          item.metadata?.twitterHandle?.replace('@', '').toLowerCase() === handle
         );
+        
+        if (filteredData.length === 0) {
+          setError(`No content found for Twitter handle: ${input.trim()}. This handle may not have registered any content, or the content may belong to a different wallet.`);
+          return;
+        }
       } else if (searchType === 'hash') {
         const searchHash = input.trim().toLowerCase();
         console.log('🔍 Filtering by hash:', searchHash);
-        filteredData = transformedData.filter((item: any) => 
-          item.hash.toLowerCase() === searchHash
+        filteredData = enrichedUploads.filter((item: any) => 
+          item.metadata?.contentHash?.toLowerCase() === searchHash
         );
+        
+        if (filteredData.length === 0) {
+          setError(`No content found for hash: ${input.trim()}. This content may not be registered, or it may belong to a different wallet.`);
+          return;
+        }
       }
 
       console.log('🔍 Filtered data:', filteredData);
@@ -431,9 +528,7 @@ export function RegistryViewer() {
               <br />• <strong>Wallet Address:</strong> Shows ALL content registered by that address
               <br />• <strong>Twitter Handle:</strong> Shows content with that specific Twitter handle
               <br />• <strong>Content Hash:</strong> Shows exact content match (66-character hex string)
-              <br />• <strong>Copy Hash:</strong> Click to copy the content hash for verification
-              <br />• <strong>Origin SDK:</strong> Shows registered content via <code>origin.getOriginUploads()</code>
-              <br />• <strong>Testing:</strong> Try searching for any address to see all registered content
+              <br />• <strong>Origin SDK:</strong> Fetches content from IPFS URLs and processes metadata
             </p>
           </div>
         </div>
