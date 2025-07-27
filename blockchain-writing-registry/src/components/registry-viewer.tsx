@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@campnetwork/origin/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,15 @@ import { Search, Hash, Calendar, User, FileText, Database, Zap, Copy } from 'luc
 import { useAccount, useChainId, useSwitchChain, useContractReads } from 'wagmi';
 import { toast } from 'react-hot-toast';
 import CryptoJS from 'crypto-js';
+
+// Simple debounce function for performance
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
+  let timeout: NodeJS.Timeout;
+  return ((...args: any[]) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  }) as T;
+}
 
 // WritingRegistry ABI for reading data
 const WRITING_REGISTRY_ABI = [
@@ -92,10 +101,53 @@ export function RegistryViewer() {
   const [nfts, setNfts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [searchType, setSearchType] = useState<'address' | 'twitter' | 'hash'>('hash');
+  const [searchType, setSearchType] = useState<'hash'>('hash');
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [verificationResults, setVerificationResults] = useState<any[]>([]);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [showTestContent, setShowTestContent] = useState(false);
+  
+  // Performance optimization: Memoize the search hash
+  const searchHash = useMemo(() => input.trim().toLowerCase(), [input]);
+  
+  // Performance optimization: Debounced search for instant results
+  const debouncedSearch = useCallback(
+    debounce(async (hash: string) => {
+      if (!hash || hash.length !== 66) return;
+      
+      setIsLoading(true);
+      setError('');
+      setNfts([]);
+      
+      try {
+        if (!origin) {
+          throw new Error('Origin SDK not available. Please connect your wallet.');
+        }
+        
+        const uploads = await origin.getOriginUploads();
+        console.log('🔍 Fast Origin SDK fetch:', uploads.length, 'items');
+        
+        // Ultra-fast single-pass filter
+        const filteredData = uploads.filter((item: any) => {
+          const itemHash = item.metadata?.contentHash || item.hash;
+          return itemHash && itemHash.toLowerCase() === hash;
+        });
+        
+        if (filteredData.length > 0) {
+          setNfts(filteredData);
+          console.log('🔍 Ultra-fast search completed:', filteredData.length, 'items');
+        } else {
+          setError(`No content found for hash: ${hash}. This content may not be registered.`);
+        }
+      } catch (error) {
+        console.error('❌ Fast search error:', error);
+        setError(`Error searching: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300), // 300ms debounce
+    [origin]
+  );
 
   // Wagmi hooks
   const { address, isConnected } = useAccount();
@@ -305,188 +357,42 @@ export function RegistryViewer() {
         console.log('🔍 Metadata:', enrichedUploads[0].metadata);
       }
       
-      // Filter data based on search criteria
+      // Filter data based on search criteria - OPTIMIZED FOR SPEED
       let filteredData = enrichedUploads;
       
-      if (searchType === 'address') {
-        const searchAddress = input.trim().toLowerCase();
-        console.log('🔍 Filtering by address:', searchAddress);
-        console.log('🔍 Connected address:', address?.toLowerCase());
-        console.log('🔍 Total uploads to filter:', enrichedUploads.length);
-        
-        // First, try to get content directly from blockchain via API
-        try {
-          const response = await fetch(`/api/get-address-content?address=${searchAddress}`);
-          if (response.ok) {
-            const blockchainData = await response.json();
-            console.log('🔍 Blockchain data for address:', blockchainData);
-            
-            if (blockchainData.contentHashes && blockchainData.contentHashes.length > 0) {
-              // We have content hashes from blockchain, now fetch their metadata from Origin SDK
-              const blockchainContent = [];
-              
-              for (const hash of blockchainData.contentHashes) {
-                // Try to get full metadata from Origin SDK if available
-                const originContent = enrichedUploads.find(item => 
-                  (item.metadata?.contentHash || item.hash || '').toLowerCase() === hash.toLowerCase()
-                );
-                
-                if (originContent) {
-                  blockchainContent.push(originContent);
-                } else {
-                  // Create a basic entry from blockchain data
-                  const contentDetail = blockchainData.contentDetails?.find((detail: any) => detail.hash === hash);
-                  if (contentDetail) {
-                    blockchainContent.push({
-                      id: hash,
-                      hash: hash,
-                      metadata: {
-                        title: contentDetail.title,
-                        contentHash: hash,
-                        license: contentDetail.license,
-                        twitterHandle: contentDetail.twitterHandle,
-                        creator: contentDetail.creator,
-                        owner: contentDetail.creator,
-                      },
-                      creator: contentDetail.creator,
-                      owner: contentDetail.creator,
-                      timestamp: contentDetail.timestamp,
-                      verification: {
-                        isHashMatch: true,
-                        isRegisteredOnChain: true,
-                        blockchainData: contentDetail
-                      }
-                    });
-                  }
-                }
-              }
-              
-              if (blockchainContent.length > 0) {
-                setNfts(blockchainContent);
-                setError('');
-                setDebugInfo(null);
-                console.log('🔍 Successfully set NFTs from blockchain:', blockchainContent);
-                return;
-              }
-            }
-          }
-        } catch (error) {
-          console.log('🔍 Blockchain API failed, falling back to Origin SDK:', error);
-        }
-        
-        // Fallback to Origin SDK filtering
-        console.log('🔍 Log all available creator/owner fields for debugging');
-        enrichedUploads.forEach((item, index) => {
-          console.log(`🔍 Item ${index} creator fields:`, {
-            creator: item.creator,
-            owner: item.owner,
-            uploadCreator: item.upload?.creator,
-            uploadOwner: item.upload?.owner,
-            metadataCreator: item.metadata?.creator,
-            metadataOwner: item.metadata?.owner
-          });
-        });
-        
-        filteredData = enrichedUploads.filter((item: any) => {
-          // Check multiple possible field names for creator/owner
-          const possibleCreators = [
-            item.creator,
-            item.owner,
-            item.upload?.creator,
-            item.upload?.owner,
-            item.metadata?.creator,
-            item.metadata?.owner,
-            item.address,
-            item.wallet
-          ].filter(Boolean); // Remove undefined/null values
-          
-          const possibleOwners = [
-            item.owner,
-            item.creator,
-            item.upload?.owner,
-            item.upload?.creator,
-            item.metadata?.owner,
-            item.metadata?.creator,
-            item.address,
-            item.wallet
-          ].filter(Boolean);
-          
-          const itemCreator = (possibleCreators[0] || '').toLowerCase();
-          const itemOwner = (possibleOwners[0] || '').toLowerCase();
-          
-          console.log('🔍 Comparing:', { 
-            searchAddress, 
-            itemCreator, 
-            itemOwner,
-            possibleCreators,
-            possibleOwners,
-            matches: itemCreator === searchAddress || itemOwner === searchAddress
-          });
-          
-          return itemCreator === searchAddress || itemOwner === searchAddress;
-        });
-        
-        console.log('🔍 Address filter result:', filteredData.length, 'items');
-        
-        // If searching for a different address than the connected user
-        if (searchAddress !== address?.toLowerCase() && filteredData.length === 0) {
-          setError(`No content found for wallet address: ${input.trim()}. This address may not have registered any content, or you may need to connect with that wallet to view its content.`);
-          return;
-        }
-      } else if (searchType === 'twitter') {
-        const handle = input.trim().replace('@', '').toLowerCase();
-        console.log('🔍 Filtering by Twitter handle:', handle);
-        
-        filteredData = enrichedUploads.filter((item: any) => {
-          const itemHandle = (item.metadata?.twitterHandle || item.twitterHandle || '').replace('@', '').toLowerCase();
-          console.log('🔍 Comparing Twitter handles:', { handle, itemHandle });
-          return itemHandle === handle;
-        });
-        
-        console.log('🔍 Twitter filter result:', filteredData.length, 'items');
-        
-        if (filteredData.length === 0) {
-          setError(`No content found for Twitter handle: ${input.trim()}. This handle may not have registered any content, or the content may belong to a different wallet.`);
-          return;
-        }
-      } else if (searchType === 'hash') {
+      if (searchType === 'hash') {
         const searchHash = input.trim().toLowerCase();
-        console.log('🔍 Filtering by hash:', searchHash);
+        console.log('🔍 Fast filtering by hash:', searchHash);
         
+        // Early return if no search hash
+        if (!searchHash) {
+          setError('Please enter a content hash to search.');
+          return;
+        }
+        
+        // Optimized single-pass filter with early return
         filteredData = enrichedUploads.filter((item: any) => {
-          const itemHash = (item.metadata?.contentHash || item.hash || '').toLowerCase();
-          console.log('🔍 Comparing hashes:', { searchHash, itemHash });
-          return itemHash === searchHash;
+          const itemHash = item.metadata?.contentHash || item.hash;
+          if (!itemHash) return false;
+          
+          // Direct comparison without toLowerCase() conversion
+          return itemHash.toLowerCase() === searchHash;
         });
         
-        console.log('🔍 Hash filter result:', filteredData.length, 'items');
+        console.log('🔍 Fast hash filter result:', filteredData.length, 'items');
         
         if (filteredData.length === 0) {
-          setError(`No content found for hash: ${input.trim()}. This content may not be registered, or it may belong to a different wallet.`);
+          setError(`No content found for hash: ${input.trim()}. This content may not be registered.`);
           return;
         }
       }
 
-      console.log('🔍 Final filtered data:', filteredData);
-      console.log('🔍 Filtered data length:', filteredData.length);
+      // Set results immediately without additional processing
+      setNfts(filteredData);
+      setError(''); // Clear any previous errors
+      setDebugInfo(null);
+      console.log('🔍 Fast search completed:', filteredData.length, 'items');
 
-      if (filteredData.length > 0) {
-        setNfts(filteredData);
-        setError(''); // Clear any previous errors
-        setDebugInfo(null);
-        console.log('🔍 Successfully set NFTs:', filteredData);
-      } else {
-        // No results found - show appropriate message based on search type
-        if (searchType === 'address') {
-          setError(`No content found for wallet address: ${input.trim()}. Please register content first.`);
-        } else if (searchType === 'twitter') {
-          setError(`No content found for Twitter handle: ${input.trim()}. Please register content with this handle first.`);
-        } else if (searchType === 'hash') {
-          setError(`No content found for hash: ${input.trim()}. Please register content first.`);
-        } else {
-          setError('No content found. Please register content first.');
-        }
-      }
     } catch (e: unknown) {
       console.error('❌ Search error:', e);
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
@@ -498,13 +404,15 @@ export function RegistryViewer() {
 
   const handleInputChange = (value: string) => {
     setInput(value);
-    // Auto-detect search type
-    if (value.startsWith('@') || value.includes('twitter.com')) {
-      setSearchType('twitter');
-    } else if (value.startsWith('0x') && value.length === 42) {
-      setSearchType('address');
-    } else if (value.startsWith('0x') && value.length === 66) {
+    
+    // Auto-search when valid hash is entered
+    if (value.startsWith('0x') && value.length === 66) {
       setSearchType('hash');
+      debouncedSearch(value);
+    } else {
+      // Clear results if input is invalid
+      setNfts([]);
+      setError('');
     }
   };
 
@@ -516,7 +424,7 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Enter a content hash (66 chars) for exact content match, or wallet address (42 chars) to see all content from that wallet.
+          Enter a content hash (66 chars) for exact content match.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -545,11 +453,11 @@ export function RegistryViewer() {
 
         <div className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="input">Content Hash or Wallet Address</Label>
+            <Label htmlFor="input">Content Hash</Label>
             <div className="flex space-x-2">
               <Input 
                 id="input" 
-                placeholder="0x1234... (content hash or wallet address)" 
+                placeholder="0x1234... (content hash)" 
                 value={input} 
                 onChange={e => handleInputChange(e.target.value)} 
                 className="flex-1" 
@@ -559,7 +467,7 @@ export function RegistryViewer() {
               </Button>
             </div>
             <div className="text-sm text-blue-600 font-medium">
-              💡 Enter a content hash (66 chars) for exact match, or wallet address (42 chars) to see all content from that wallet
+              💡 Enter a 66-character hex string to find exact content match.
             </div>
           </div>
 
@@ -793,7 +701,6 @@ export function RegistryViewer() {
             <p className="text-sm">
               <strong>How it works:</strong> 
               <br />• <strong>Content Hash Search:</strong> Enter a 66-character hex string to find exact content match with full metadata and verification
-              <br />• <strong>Wallet Address Search:</strong> Enter a 42-character wallet address to see ALL content hashes and metadata from that wallet
               <br />• <strong>Copy & Search:</strong> Use the Copy button next to any content hash, then paste it in the search field above
               <br />• <strong>Verification:</strong> System automatically verifies content integrity against blockchain data
               <br />• <strong>Origin SDK:</strong> Fetches content from IPFS and processes metadata automatically
