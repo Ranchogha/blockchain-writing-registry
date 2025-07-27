@@ -110,43 +110,65 @@ export function RegistryViewer() {
   // Performance optimization: Memoize the search hash
   const searchHash = useMemo(() => input.trim().toLowerCase(), [input]);
   
-  // Performance optimization: Debounced search for instant results
+  // Ultra-fast blockchain search
+  const fastSearch = useCallback(async (hash: string) => {
+    if (!hash || hash.length !== 66) return;
+    
+    setIsLoading(true);
+    setError('');
+    setNfts([]);
+    
+    try {
+      const startTime = Date.now();
+      const response = await fetch(`/api/fast-search?hash=${hash}`);
+      const data = await response.json();
+      const searchTime = Date.now() - startTime;
+      
+      console.log(`🔍 Ultra-fast search completed in ${searchTime}ms`);
+      
+      if (data.found) {
+        // Create a standardized result format
+        const result = {
+          id: data.data.hash,
+          hash: data.data.hash,
+          metadata: {
+            title: data.data.title,
+            contentHash: data.data.hash,
+            license: data.data.license,
+            twitterHandle: data.data.twitterHandle,
+            creator: data.data.creator,
+            owner: data.data.creator,
+          },
+          creator: data.data.creator,
+          owner: data.data.creator,
+          timestamp: data.data.timestamp,
+          verification: {
+            isHashMatch: true,
+            isRegisteredOnChain: true,
+            blockchainData: data.data,
+            searchTime: data.searchTime
+          }
+        };
+        
+        setNfts([result]);
+        console.log('🔍 Ultra-fast result:', result);
+      } else {
+        setError(`No content found for hash: ${hash}. This content may not be registered.`);
+      }
+    } catch (error) {
+      console.error('❌ Ultra-fast search error:', error);
+      setError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Ultra-fast blockchain search with debouncing
   const debouncedSearch = useCallback(
     debounce(async (hash: string) => {
-      if (!hash || hash.length !== 66) return;
-      
-      setIsLoading(true);
-      setError('');
-      setNfts([]);
-      
-      try {
-        if (!origin) {
-          throw new Error('Origin SDK not available. Please connect your wallet.');
-        }
-        
-        const uploads = await origin.getOriginUploads();
-        console.log('🔍 Fast Origin SDK fetch:', uploads.length, 'items');
-        
-        // Ultra-fast single-pass filter
-        const filteredData = uploads.filter((item: any) => {
-          const itemHash = item.metadata?.contentHash || item.hash;
-          return itemHash && itemHash.toLowerCase() === hash;
-        });
-        
-        if (filteredData.length > 0) {
-          setNfts(filteredData);
-          console.log('🔍 Ultra-fast search completed:', filteredData.length, 'items');
-        } else {
-          setError(`No content found for hash: ${hash}. This content may not be registered.`);
-        }
-      } catch (error) {
-        console.error('❌ Fast search error:', error);
-        setError(`Error searching: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      } finally {
-        setIsLoading(false);
-      }
-    }, 300), // 300ms debounce
-    [origin]
+      await fastSearch(hash);
+    }, 200), // Reduced to 200ms for even faster response
+    [fastSearch]
   );
 
   // Wagmi hooks
@@ -408,7 +430,7 @@ export function RegistryViewer() {
     // Auto-search when valid hash is entered
     if (value.startsWith('0x') && value.length === 66) {
       setSearchType('hash');
-      debouncedSearch(value);
+      fastSearch(value);
     } else {
       // Clear results if input is invalid
       setNfts([]);
