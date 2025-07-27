@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
     const contract = getContract({
       address: WRITING_REGISTRY_ADDRESS,
       abi: WRITING_REGISTRY_ABI,
-      publicClient
+      client: publicClient
     });
 
     // Check if hash is registered
