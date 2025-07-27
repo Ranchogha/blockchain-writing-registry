@@ -170,7 +170,7 @@ export function RegistryViewer() {
     debounce(async (hash: string) => {
       await fastSearch(hash);
     }, 200), // Reduced to 200ms for even faster response
-    [fastSearch]
+    []
   );
 
   // Wagmi hooks
@@ -687,7 +687,7 @@ export function RegistryViewer() {
               <br />• <strong>Origin SDK UI:</strong> Beautiful content display and interface powered by Origin SDK
               <br />• <strong>Twitter Handle Creator:</strong> Twitter handles are displayed as creators when available
               <br />• <strong>Hybrid Search:</strong> Checks both WritingRegistry contract and Origin SDK for complete data
-              <br />• <strong>Best of Both:</strong> Origin's UI + Your smart contract's functionality
+              <br />• <strong>Best of Both:</strong> Origin&apos;s UI + Your smart contract&apos;s functionality
             </p>
           </div>
         </div>
