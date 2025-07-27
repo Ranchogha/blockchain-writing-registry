@@ -128,11 +128,11 @@ export async function GET(request: NextRequest) {
         // Get the proof data from blockchain
         const proof = await contract.read.getProof([hash]);
         blockchainData = {
-          title: proof[0],
-          license: proof[1],
-          twitterHandle: proof[2],
-          timestamp: proof[3].toString(),
-          creator: proof[4]
+          title: proof.title,
+          license: proof.license,
+          twitterHandle: proof.twitterHandle,
+          timestamp: proof.timestamp.toString(),
+          creator: proof.creator
         };
       } catch (error) {
         console.error('Error fetching proof data:', error);
