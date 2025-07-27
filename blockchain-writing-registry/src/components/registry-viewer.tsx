@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Search, Hash, Calendar, User, FileText, Database, Zap, Copy, Check, AlertTriangle } from 'lucide-react';
+import { Search, Hash, Calendar, User, FileText, Database, Zap, Copy, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useAccount, useChainId, useSwitchChain, useContractReads } from 'wagmi';
 import { toast } from 'react-hot-toast';
 import CryptoJS from 'crypto-js';
@@ -543,12 +543,12 @@ export function RegistryViewer() {
                         {nft.verification && (
                           <div className="flex items-center space-x-1">
                             {nft.verification.isHashMatch ? (
-                              <Check className="h-4 w-4 text-green-500" title="Hash verified" />
+                              <CheckCircle className="h-4 w-4 text-green-500" title="Hash verified" />
                             ) : (
                               <AlertTriangle className="h-4 w-4 text-red-500" title="Hash mismatch" />
                             )}
                             {nft.verification.isRegisteredOnChain ? (
-                              <Check className="h-4 w-4 text-green-500" title="Registered on blockchain" />
+                              <CheckCircle className="h-4 w-4 text-green-500" title="Registered on blockchain" />
                             ) : (
                               <AlertTriangle className="h-4 w-4 text-yellow-500" title="Not found on blockchain" />
                             )}
@@ -621,7 +621,7 @@ export function RegistryViewer() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                           <div className="flex items-center space-x-2">
                             {nft.verification.isHashMatch ? (
-                              <Check className="h-4 w-4 text-green-500" />
+                              <CheckCircle className="h-4 w-4 text-green-500" />
                             ) : (
                               <AlertTriangle className="h-4 w-4 text-red-500" />
                             )}
@@ -629,7 +629,7 @@ export function RegistryViewer() {
                           </div>
                           <div className="flex items-center space-x-2">
                             {nft.verification.isRegisteredOnChain ? (
-                              <Check className="h-4 w-4 text-green-500" />
+                              <CheckCircle className="h-4 w-4 text-green-500" />
                             ) : (
                               <AlertTriangle className="h-4 w-4 text-yellow-500" />
                             )}
