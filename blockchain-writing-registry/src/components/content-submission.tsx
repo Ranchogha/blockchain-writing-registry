@@ -272,7 +272,7 @@ export function ContentSubmission() {
           <Button 
             type="submit" 
             disabled={!content.trim() || !title.trim() || !license || isWriting || !isConnected || chainId !== CAMP_CHAIN_ID}
-            className="w-full"
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white"
           >
             {isWriting ? 'Registering on Blockchain...' : 'Register Content'}
           </Button>

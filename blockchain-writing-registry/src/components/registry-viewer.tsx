@@ -433,7 +433,7 @@ export function RegistryViewer() {
                 onChange={e => handleInputChange(e.target.value)} 
                 className="flex-1" 
               />
-              <Button onClick={handleSearch} disabled={!input.trim() || isLoading || !origin}>
+              <Button onClick={handleSearch} disabled={!input.trim() || isLoading || !origin} className="bg-orange-500 hover:bg-orange-600 text-white">
                 {isLoading ? 'Searching...' : 'Search'}
               </Button>
             </div>
@@ -525,7 +525,7 @@ export function RegistryViewer() {
                         <FileText className="h-5 w-5" />
                         <span>{item.title || 'Untitled'}</span>
                         {item.verification?.isRegisteredOnChain && (
-                          <span className="text-xs text-green-500">✓ On Blockchain</span>
+                          <span className="text-xs text-orange-500">✓ On Blockchain</span>
                         )}
                         {item.originData && (
                           <span className="text-xs text-orange-500">✓ Origin Content</span>
@@ -623,8 +623,8 @@ export function RegistryViewer() {
                     {item.content && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Content (Origin SDK)</Label>
-                        <div className="bg-gray-50 p-4 rounded-lg border">
-                          <pre className="text-sm text-gray-800 whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto">
+                        <div className="bg-black p-4 rounded-lg border">
+                          <pre className="text-sm text-white whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto">
                             {item.content}
                           </pre>
                         </div>
@@ -638,14 +638,14 @@ export function RegistryViewer() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                           <div className="flex items-center space-x-2">
                             {item.verification.isHashMatch ? (
-                              <span className="text-green-500">✓ Hash Match</span>
+                              <span className="text-orange-500">✓ Hash Match</span>
                             ) : (
                               <span className="text-red-500">✗ Hash Match</span>
                             )}
                           </div>
                           <div className="flex items-center space-x-2">
                             {item.verification.isRegisteredOnChain ? (
-                              <span className="text-green-500">✓ On Blockchain</span>
+                              <span className="text-orange-500">✓ On Blockchain</span>
                             ) : (
                               <span className="text-yellow-500">⚠ On Blockchain</span>
                             )}
@@ -680,7 +680,7 @@ export function RegistryViewer() {
           )}
 
           {/* Info about data sources */}
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded-md text-orange-700">
+          <div className="p-4 bg-orange-500 border border-orange-600 rounded-md text-white">
             <p className="text-sm">
               <strong>How it works:</strong> 
               <br />Enter the content hash, search and confirm your content has been uploaded.
