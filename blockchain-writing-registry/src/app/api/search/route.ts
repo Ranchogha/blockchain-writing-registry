@@ -32,7 +32,7 @@ const SEARCH_ABI = [
 ] as const;
 
 const WRITING_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}` || '0xb9C7cd7158805B03A8ADc999F6C08933E51BD97d';
-const CAMP_RPC_URL = process.env.CAMP_RPC_URL || 'https://mainnet.base.org';
+const CAMP_RPC_URL = process.env.NEXT_PUBLIC_CAMP_NETWORK_RPC || 'https://rpc.basecamp.t.raas.gelato.cloud';
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -123,6 +123,12 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Search error:', error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      rpcUrl: CAMP_RPC_URL,
+      contractAddress: WRITING_REGISTRY_ADDRESS
+    });
     return NextResponse.json(
       { error: 'Search failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
