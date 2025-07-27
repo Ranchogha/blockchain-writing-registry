@@ -686,7 +686,7 @@ export function RegistryViewer() {
               <strong>How it works:</strong> 
               <br />• <strong>Content Hash Search:</strong> Enter a 66-character hex string to find exact content match with full metadata and verification
               <br />• <strong>Wallet Address Search:</strong> Enter a 42-character wallet address to see ALL content hashes and metadata from that wallet
-              <br />• <strong>Copy & Search:</strong> Use the "Copy" button next to any content hash, then paste it in the search field above
+              <br />• <strong>Copy & Search:</strong> Use the Copy button next to any content hash, then paste it in the search field above
               <br />• <strong>Verification:</strong> System automatically verifies content integrity against blockchain data
               <br />• <strong>Origin SDK:</strong> Fetches content from IPFS and processes metadata automatically
             </p>
