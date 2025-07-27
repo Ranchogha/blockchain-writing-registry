@@ -92,7 +92,7 @@ export function RegistryViewer() {
   const [nfts, setNfts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [searchType, setSearchType] = useState<'address' | 'twitter' | 'hash'>('address');
+  const [searchType, setSearchType] = useState<'address' | 'twitter' | 'hash'>('hash');
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [verificationResults, setVerificationResults] = useState<any[]>([]);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -408,7 +408,7 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Enter a wallet address to see all registered content, Twitter handle for specific content, or content hash for exact match.
+          Enter a content hash (66 chars) for exact content match, or wallet address (42 chars) to see all content from that wallet.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -437,11 +437,11 @@ export function RegistryViewer() {
 
         <div className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="input">Wallet Address, Twitter Handle, or Content Hash</Label>
+            <Label htmlFor="input">Content Hash or Wallet Address</Label>
             <div className="flex space-x-2">
               <Input 
                 id="input" 
-                placeholder="0x... (address/hash) or @handle" 
+                placeholder="0x1234... (content hash or wallet address)" 
                 value={input} 
                 onChange={e => handleInputChange(e.target.value)} 
                 className="flex-1" 
@@ -450,10 +450,8 @@ export function RegistryViewer() {
                 {isLoading ? 'Searching...' : 'Search'}
               </Button>
             </div>
-            <div className="text-sm text-gray-500">
-              Search type: {searchType === 'twitter' ? 'Twitter Handle' : searchType === 'hash' ? 'Content Hash' : 'Wallet Address'} 
-              {searchType === 'address' && ' (shows all content for this address)'}
-              {searchType === 'hash' && ' (exact match)'}
+            <div className="text-sm text-blue-600 font-medium">
+              💡 Enter a content hash (66 chars) for exact match, or wallet address (42 chars) to see all content from that wallet
             </div>
           </div>
 
@@ -575,7 +573,7 @@ export function RegistryViewer() {
                         <div className="flex items-center space-x-2">
                           <User className="h-4 w-4 text-gray-500" />
                           <code className="text-sm font-mono text-gray-700">
-                            {nft.creator}
+                            {nft.creator && nft.creator !== 'Unknown' ? nft.creator : 'Wallet address not available'}
                           </code>
                         </div>
                       </div>
@@ -588,7 +586,23 @@ export function RegistryViewer() {
                         <code className="text-sm font-mono text-gray-700 break-all">
                           {nft.metadata?.contentHash || 'N/A'}
                         </code>
+                        {nft.metadata?.contentHash && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyToClipboard(nft.metadata.contentHash)}
+                            className="ml-2"
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            Copy
+                          </Button>
+                        )}
                       </div>
+                      {nft.metadata?.contentHash && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          💡 Copy this hash to search for this exact content in the registry viewer
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -644,7 +658,7 @@ export function RegistryViewer() {
                     {nft.metadata?.content && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Content Preview</Label>
-                        <pre className="bg-white p-2 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
+                        <pre className="bg-black text-white p-2 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
                           {nft.metadata.content.length > 200 
                             ? `${nft.metadata.content.substring(0, 200)}...` 
                             : nft.metadata.content}
@@ -670,11 +684,11 @@ export function RegistryViewer() {
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-blue-700">
             <p className="text-sm">
               <strong>How it works:</strong> 
-              <br />• <strong>Wallet Address:</strong> Shows ALL content registered by that address
-              <br />• <strong>Twitter Handle:</strong> Shows content with that specific Twitter handle
-              <br />• <strong>Content Hash:</strong> Shows exact content match (66-character hex string)
-              <br />• <strong>Origin SDK:</strong> Fetches content from IPFS URLs and processes metadata
-              <br />• <strong>Verification:</strong> Compares content hash with blockchain data for authenticity
+              <br />• <strong>Content Hash Search:</strong> Enter a 66-character hex string to find exact content match with full metadata and verification
+              <br />• <strong>Wallet Address Search:</strong> Enter a 42-character wallet address to see ALL content hashes and metadata from that wallet
+              <br />• <strong>Copy & Search:</strong> Use the "Copy" button next to any content hash, then paste it in the search field above
+              <br />• <strong>Verification:</strong> System automatically verifies content integrity against blockchain data
+              <br />• <strong>Origin SDK:</strong> Fetches content from IPFS and processes metadata automatically
             </p>
           </div>
         </div>
