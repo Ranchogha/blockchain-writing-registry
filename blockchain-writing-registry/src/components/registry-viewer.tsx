@@ -242,7 +242,7 @@ export function RegistryViewer() {
 
       // For hash searches, check both WritingRegistry contract AND Origin SDK
       if (searchType === 'hash' && input.trim().startsWith('0x') && input.trim().length === 66) {
-        console.log('🔍 Using WritingRegistry contract + Origin SDK search for hash:', input.trim());
+        console.log('🔍 Using WritingRegistry contract + Origin SDK for hash:', input.trim());
         
         let blockchainData = null;
         let originData = null;
@@ -267,7 +267,7 @@ export function RegistryViewer() {
           // Continue with Origin SDK even if blockchain search fails
         }
         
-        // Check Origin SDK
+        // Check Origin SDK for content display
         if (origin) {
           try {
             console.log('🔍 Checking Origin SDK for content...');
@@ -318,7 +318,8 @@ export function RegistryViewer() {
                         walletAddress: walletAddress,
                         license: upload.license || upload.metadata?.license || 'All Rights Reserved',
                         timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000),
-                        url: upload.url
+                        url: upload.url,
+                        upload: upload // Keep full Origin upload data for UI
                       };
                       break;
                     }
@@ -338,20 +339,19 @@ export function RegistryViewer() {
           const result = {
             id: input.trim(),
             hash: input.trim(),
-            metadata: {
-              title: originData?.title || blockchainData?.title || 'Unknown',
-              contentHash: input.trim(),
-              license: originData?.license || blockchainData?.license || 'Unknown',
-              twitterHandle: originData?.twitterHandle || blockchainData?.twitterHandle || '',
-              creator: originData?.creator || blockchainData?.creator || 'Unknown',
-              owner: originData?.creator || blockchainData?.creator || 'Unknown',
-              walletAddress: originData?.walletAddress || blockchainData?.walletAddress || 'Unknown',
-              content: originData?.content || null,
-            },
+            // Use blockchain data for verification
+            blockchainData: blockchainData,
+            // Use Origin data for display
+            originData: originData,
+            // Combine for display
+            title: originData?.title || blockchainData?.title || 'Unknown',
+            license: originData?.license || blockchainData?.license || 'Unknown',
+            twitterHandle: originData?.twitterHandle || blockchainData?.twitterHandle || '',
             creator: originData?.creator || blockchainData?.creator || 'Unknown',
-            owner: originData?.creator || blockchainData?.creator || 'Unknown',
             walletAddress: originData?.walletAddress || blockchainData?.walletAddress || 'Unknown',
             timestamp: originData?.timestamp || blockchainData?.timestamp || '0',
+            content: originData?.content || null,
+            upload: originData?.upload || null,
             verification: {
               isHashMatch: true,
               isRegisteredOnChain: !!blockchainData,
@@ -370,184 +370,8 @@ export function RegistryViewer() {
         }
       }
 
-      // For non-hash searches, use Origin SDK
-      console.log('🔍 Using Origin SDK to fetch uploads...');
-      
-      if (!origin) {
-        throw new Error('Origin SDK not available. Please connect your wallet.');
-      }
-
-      console.log('🔍 Starting Origin SDK search for registered content...');
-      console.log('🔍 Search input:', input);
-      console.log('🔍 Search type:', searchType);
-      console.log('🔍 Origin object:', origin);
-      console.log('🔍 Available origin methods:', Object.getOwnPropertyNames(origin));
-      
-      // Use only the valid Origin SDK method
-      let uploads = [];
-      
-      try {
-        uploads = await origin.getOriginUploads();
-        console.log('🔍 getOriginUploads result:', uploads);
-      } catch (e: any) {
-        console.log('🔍 getOriginUploads failed:', e);
-        setError(`Failed to fetch content: ${e.message || 'Unknown error'}`);
-        return;
-      }
-      
-      console.log('🔍 Final uploads to process:', uploads);
-      console.log('🔍 Uploads length:', uploads?.length || 0);
-      
-      if (uploads && uploads.length > 0) {
-        console.log('🔍 First upload structure:', uploads[0]);
-        console.log('🔍 Upload keys:', Object.keys(uploads[0] || {}));
-      }
-
-      if (!uploads || uploads.length === 0) {
-        console.log('🔍 No uploads found');
-        setError('No content found. Please register content first.');
-        return;
-      }
-
-      // Fetch full content and metadata for each upload
-      let enrichedUploads = [];
-      let verificationResults = [];
-      console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
-      
-      for (let i = 0; i < uploads.length; i++) {
-        const upload = uploads[i];
-        console.log(`🔍 Processing upload ${i + 1}/${uploads.length}:`, upload);
-
-        try {
-          console.log('🔍 Fetching content from URL:', upload.url);
-          const response = await fetch(upload.url);
-          console.log('🔍 Response status:', response.status, response.statusText);
-
-          if (response.ok) {
-            const content = await response.text();
-            console.log('🔍 Fetched content length:', content.length);
-            console.log('🔍 Content preview:', content.substring(0, 100) + '...');
-
-            // Generate hash using the same method as upload
-            const contentHash = generateHash(content);
-            console.log('🔍 Generated hash:', contentHash);
-
-            // Parse title (first non-empty line or line starting with Title:)
-            let title = upload.title || upload.metadata?.title || 'Untitled';
-            let twitterHandle = upload.twitterHandle || upload.metadata?.twitterHandle || '';
-            
-            // Only parse from content if title is still 'Untitled' or no Twitter handle found
-            if (title === 'Untitled' || !twitterHandle) {
-              const lines = content.split(/\r?\n/);
-              for (let line of lines) {
-                const trimmed = line.trim();
-                if (!twitterHandle) {
-                  // Look for Twitter: @handle or @handle
-                  const match = trimmed.match(/(?:Twitter:)?\s*(@[\w_]+)/i);
-                  if (match) twitterHandle = match[1];
-                }
-                if (title === 'Untitled' && trimmed) {
-                  // Prefer a line like Title: ...
-                  const titleMatch = trimmed.match(/^Title:\s*(.+)$/i);
-                  if (titleMatch) {
-                    title = titleMatch[1];
-                    continue;
-                  }
-                  // Otherwise, use the first non-empty line
-                  title = trimmed;
-                }
-                if (title !== 'Untitled' && twitterHandle) break;
-              }
-            }
-
-            // Use Twitter handle as creator if available, otherwise use wallet address
-            const walletAddress = upload.owner || upload.creator || upload.metadata?.owner || upload.metadata?.creator || upload.metadata?.walletAddress || 'Unknown';
-            const creator = twitterHandle || walletAddress;
-
-            // Verify content against blockchain
-            const verification = await verifyContent(content, contentHash);
-
-            // Create enriched upload with metadata
-            const enrichedUpload = {
-              ...upload,
-              content: content,
-              metadata: {
-                title: title,
-                content: content,
-                contentHash: contentHash,
-                license: upload.license || upload.metadata?.license || 'All Rights Reserved',
-                twitterHandle: twitterHandle,
-                creator: creator,
-                owner: creator,
-                walletAddress: walletAddress,
-              },
-              owner: creator,
-              creator: creator,
-              walletAddress: walletAddress,
-              timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000),
-              verification: verification
-            };
-            enrichedUploads.push(enrichedUpload);
-            verificationResults.push(verification);
-            console.log('🔍 Successfully enriched upload:', enrichedUpload);
-          } else {
-            console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
-          }
-        } catch (e: unknown) {
-          console.error('🔍 Failed to fetch content for upload:', e);
-          if (e instanceof Error) {
-            console.error('🔍 Error details:', e.message, e.stack);
-          }
-        }
-      }
-      
-      console.log('🔍 Enriched uploads:', enrichedUploads);
-      setVerificationResults(verificationResults);
-      
-      // Add debug info to help troubleshoot
-      if (enrichedUploads.length > 0) {
-        console.log('🔍 Sample enriched upload structure:', enrichedUploads[0]);
-        console.log('🔍 Available fields:', Object.keys(enrichedUploads[0]));
-        console.log('🔍 Creator field:', enrichedUploads[0].creator);
-        console.log('🔍 Owner field:', enrichedUploads[0].owner);
-        console.log('🔍 Metadata:', enrichedUploads[0].metadata);
-      }
-      
-      // Filter data based on search criteria - OPTIMIZED FOR SPEED
-      let filteredData = enrichedUploads;
-      
-      if (searchType === 'hash') {
-        const searchHash = input.trim().toLowerCase();
-        console.log('🔍 Fast filtering by hash:', searchHash);
-        
-        // Early return if no search hash
-        if (!searchHash) {
-          setError('Please enter a content hash to search.');
-          return;
-        }
-        
-        // Optimized single-pass filter with early return
-        filteredData = enrichedUploads.filter((item: any) => {
-          const itemHash = item.metadata?.contentHash || item.hash;
-          if (!itemHash) return false;
-          
-          // Direct comparison without toLowerCase() conversion
-          return itemHash.toLowerCase() === searchHash;
-        });
-        
-        console.log('🔍 Fast hash filter result:', filteredData.length, 'items');
-        
-        if (filteredData.length === 0) {
-          setError(`No content found for hash: ${input.trim()}. This content may not be registered.`);
-          return;
-        }
-      }
-
-      // Set results immediately without additional processing
-      setNfts(filteredData);
-      setError(''); // Clear any previous errors
-      setDebugInfo(null);
-      console.log('🔍 Fast search completed:', filteredData.length, 'items');
+      // For non-hash searches, show message to use hash search
+      setError('Please enter a content hash (66-character hex string starting with 0x) to search the WritingRegistry contract.');
 
     } catch (e: unknown) {
       console.error('❌ Search error:', e);
@@ -571,7 +395,7 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Enter a content hash (66 chars) for exact content match. Twitter handles are displayed as creators when available.
+          Enter a content hash (66 chars) to search. Uses Origin SDK UI + WritingRegistry contract backend.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -689,33 +513,28 @@ export function RegistryViewer() {
                   Found {nfts.length} item{nfts.length !== 1 ? 's' : ''}
                 </h3>
                 <div className="text-sm text-gray-500">
-                  Origin SDK Content
+                  Origin SDK UI + WritingRegistry Data
                 </div>
               </div>
               
-              {nfts.map((nft, idx) => (
-                <Card key={nft.id || nft.hash || idx} className="border-l-4 border-l-blue-500">
+              {nfts.map((item, idx) => (
+                <Card key={item.id || item.hash || idx} className="border-l-4 border-l-blue-500">
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <FileText className="h-5 w-5" />
-                        <span>{nft.metadata?.title || 'Untitled'}</span>
-                        {/* Verification Status */}
-                        {nft.verification && (
-                          <div className="flex items-center space-x-1 text-xs">
-                            <span className={nft.verification.isHashMatch ? "text-green-500" : "text-red-500"}>
-                              {nft.verification.isHashMatch ? "✓" : "✗"} Hash
-                            </span>
-                            <span className={nft.verification.isRegisteredOnChain ? "text-green-500" : "text-yellow-500"}>
-                              {nft.verification.isRegisteredOnChain ? "✓" : "⚠"} Chain
-                            </span>
-                          </div>
+                        <span>{item.title || 'Untitled'}</span>
+                        {item.verification?.isRegisteredOnChain && (
+                          <span className="text-xs text-green-500">✓ On Blockchain</span>
+                        )}
+                        {item.originData && (
+                          <span className="text-xs text-blue-500">✓ Origin Content</span>
                         )}
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => copyToClipboard(nft.metadata?.contentHash || 'N/A')}
+                        onClick={() => copyToClipboard(item.hash || 'N/A')}
                         className="flex items-center space-x-2"
                       >
                         <Copy className="h-4 w-4" />
@@ -728,7 +547,7 @@ export function RegistryViewer() {
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">License</Label>
                         <p className="text-sm text-gray-600">
-                          {nft.metadata?.license}
+                          {item.license || 'Unknown'}
                         </p>
                       </div>
                       <div className="space-y-2">
@@ -736,18 +555,18 @@ export function RegistryViewer() {
                         <div className="flex items-center space-x-2">
                           <User className="h-4 w-4 text-gray-500" />
                           <div className="flex flex-col">
-                            {nft.creator && nft.creator !== 'Unknown' && !nft.creator.startsWith('0x') ? (
+                            {item.creator && item.creator !== 'Unknown' && !item.creator.startsWith('0x') ? (
                               <span className="text-sm text-blue-600 font-medium">
-                                @{nft.creator}
+                                @{item.creator}
                               </span>
                             ) : (
                               <code className="text-sm font-mono text-gray-700">
-                                {nft.walletAddress || nft.creator || 'Wallet address not available'}
+                                {item.walletAddress || item.creator || 'Wallet address not available'}
                               </code>
                             )}
-                            {nft.walletAddress && nft.walletAddress !== '0x0000000000000000000000000000000000000000' && (
+                            {item.walletAddress && item.walletAddress !== '0x0000000000000000000000000000000000000000' && (
                               <span className="text-xs text-gray-500">
-                                Wallet: {nft.walletAddress}
+                                Wallet: {item.walletAddress}
                               </span>
                             )}
                           </div>
@@ -760,13 +579,13 @@ export function RegistryViewer() {
                       <div className="flex items-center space-x-2">
                         <Hash className="h-4 w-4 text-gray-500" />
                         <code className="text-sm font-mono text-gray-700 break-all">
-                          {nft.metadata?.contentHash || 'N/A'}
+                          {item.hash || 'N/A'}
                         </code>
-                        {nft.metadata?.contentHash && (
+                        {item.hash && (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => copyToClipboard(nft.metadata.contentHash)}
+                            onClick={() => copyToClipboard(item.hash)}
                             className="ml-2"
                           >
                             <Copy className="h-3 w-3 mr-1" />
@@ -774,7 +593,7 @@ export function RegistryViewer() {
                           </Button>
                         )}
                       </div>
-                      {nft.metadata?.contentHash && (
+                      {item.hash && (
                         <p className="text-xs text-blue-600 mt-1">
                           💡 Copy this hash to search for this exact content in the registry viewer
                         </p>
@@ -786,68 +605,72 @@ export function RegistryViewer() {
                       <div className="flex items-center space-x-2">
                         <Calendar className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          {nft.timestamp ? new Date(Number(nft.timestamp) * 1000).toLocaleString() : 'N/A'}
+                          {item.timestamp ? new Date(Number(item.timestamp) * 1000).toLocaleString() : 'N/A'}
                         </span>
                       </div>
                     </div>
 
-                    {(nft.metadata?.twitterHandle) && (
+                    {item.twitterHandle && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Twitter Handle</Label>
                         <p className="text-sm text-blue-600">
-                          @{nft.metadata.twitterHandle}
+                          @{item.twitterHandle}
                         </p>
                       </div>
                     )}
 
-                    {/* Verification Details */}
-                    {nft.verification && (
+                    {/* Origin SDK Content Display */}
+                    {item.content && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Content (Origin SDK)</Label>
+                        <div className="bg-gray-50 p-4 rounded-lg border">
+                          <pre className="text-sm text-gray-800 whitespace-pre-wrap overflow-x-auto max-h-64 overflow-y-auto">
+                            {item.content}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Blockchain Verification Status */}
+                    {item.verification && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Verification Status</Label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                           <div className="flex items-center space-x-2">
-                            {nft.verification.isHashMatch ? (
+                            {item.verification.isHashMatch ? (
                               <span className="text-green-500">✓ Hash Match</span>
                             ) : (
                               <span className="text-red-500">✗ Hash Match</span>
                             )}
                           </div>
                           <div className="flex items-center space-x-2">
-                            {nft.verification.isRegisteredOnChain ? (
+                            {item.verification.isRegisteredOnChain ? (
                               <span className="text-green-500">✓ On Blockchain</span>
                             ) : (
                               <span className="text-yellow-500">⚠ On Blockchain</span>
                             )}
                           </div>
                         </div>
-                        {nft.verification.blockchainData && (
+                        {item.verification.blockchainData && (
                           <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
                             <strong>Blockchain Data:</strong>
                             <pre className="mt-1 overflow-x-auto">
-                              {JSON.stringify(nft.verification.blockchainData, null, 2)}
+                              {JSON.stringify(item.verification.blockchainData, null, 2)}
                             </pre>
                           </div>
                         )}
                       </div>
                     )}
 
-                    {nft.metadata?.content && (
+                    {item.verification?.searchTime && (
                       <div className="space-y-2">
-                        <Label className="text-sm font-medium">Content Preview</Label>
-                        <pre className="bg-black text-white p-2 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
-                          {nft.metadata.content.length > 200 
-                            ? `${nft.metadata.content.substring(0, 200)}...` 
-                            : nft.metadata.content}
-                        </pre>
-                      </div>
-                    )}
-
-                    {nft.metadata?.twitter && (
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Twitter Data</Label>
-                        <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto max-h-32 overflow-y-auto">
-                          {JSON.stringify(nft.metadata.twitter, null, 2)}
-                        </pre>
+                        <Label className="text-sm font-medium">Search Performance</Label>
+                        <div className="flex items-center space-x-2">
+                          <Zap className="h-4 w-4 text-gray-500" />
+                          <span className="text-sm text-gray-600">
+                            {item.verification.searchTime}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </CardContent>
@@ -860,11 +683,11 @@ export function RegistryViewer() {
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-blue-700">
             <p className="text-sm">
               <strong>How it works:</strong> 
-              <br />• <strong>WritingRegistry Search:</strong> Enter a 66-character hex string to search the blockchain registry directly
-              <br />• <strong>Twitter Handle Creator:</strong> Twitter handles are displayed as creators when available from the blockchain
-              <br />• <strong>Copy & Search:</strong> Use the Copy button next to any content hash, then paste it in the search field above
-              <br />• <strong>Blockchain Verification:</strong> System automatically verifies content against the WritingRegistry smart contract
-              <br />• <strong>Origin SDK Fallback:</strong> For non-hash searches, falls back to IPFS content via Origin SDK
+              <br />• <strong>WritingRegistry Backend:</strong> All transactions use your smart contract for blockchain verification
+              <br />• <strong>Origin SDK UI:</strong> Beautiful content display and interface powered by Origin SDK
+              <br />• <strong>Twitter Handle Creator:</strong> Twitter handles are displayed as creators when available
+              <br />• <strong>Hybrid Search:</strong> Checks both WritingRegistry contract and Origin SDK for complete data
+              <br />• <strong>Best of Both:</strong> Origin's UI + Your smart contract's functionality
             </p>
           </div>
         </div>

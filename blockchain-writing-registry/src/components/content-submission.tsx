@@ -10,10 +10,31 @@ import { Hash, FileText } from 'lucide-react';
 import CryptoJS from 'crypto-js';
 import { useAuth, useAuthState } from '@campnetwork/origin/react';
 import { TwitterAPI } from '@campnetwork/origin';
-import { useAccount, useChainId, useSwitchChain, useBalance, useWalletClient } from 'wagmi';
+import { useAccount, useChainId, useSwitchChain, useBalance, useWalletClient, useWriteContract } from 'wagmi';
 import { getAddress } from 'viem';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
+
+// WritingRegistry ABI for the registerProof function
+const WRITING_REGISTRY_ABI = [
+  {
+    "inputs": [
+      {"internalType": "string", "name": "hash", "type": "string"},
+      {"internalType": "string", "name": "title", "type": "string"},
+      {"internalType": "string", "name": "license", "type": "string"},
+      {"internalType": "string", "name": "twitterHandle", "type": "string"}
+    ],
+    "name": "registerProof",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+] as const;
+
+const WRITING_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}` || '0xb9C7cd7158805B03A8ADc999F6C08933E51BD97d';
+
+// Camp Network chainId
+const CAMP_CHAIN_ID = 123420001114;
 
 export function ContentSubmission() {
   const { origin, jwt } = useAuth();
@@ -35,8 +56,18 @@ export function ContentSubmission() {
   const { data: balanceData } = useBalance({ address });
   const { data: walletClient } = useWalletClient();
 
-  // Camp Network chainId
-  const CAMP_CHAIN_ID = 123420001114;
+  // Contract write for WritingRegistry
+  const { writeContract, isPending: isWriting, data: txData } = useWriteContract();
+
+  // Handle transaction success
+  useEffect(() => {
+    if (txData) {
+      setTxHash(txData);
+      setIsSuccess(true);
+      toast.success('Content registered successfully on WritingRegistry contract!');
+      console.log('✅ Transaction successful:', txData);
+    }
+  }, [txData]);
 
   const generateHash = (text: string) => {
     if (!text.trim()) return '';
@@ -84,82 +115,52 @@ export function ContentSubmission() {
       toast.error(preCheckError || 'Pre-check failed.');
       return;
     }
-    if (!origin || !authenticated) {
-      toast.error('Please connect your wallet and authenticate first');
+    
+    if (!isConnected) {
+      toast.error('Please connect your wallet first');
       return;
     }
+
+    if (chainId !== CAMP_CHAIN_ID) {
+      toast.error('Please switch to Camp Network BaseCAMP');
+      return;
+    }
+
+    if (!writeContract) {
+      toast.error('Contract not ready. Please check your input and try again.');
+      return;
+    }
+
     try {
       setIsWriting(true);
       setIsSuccess(false);
-      let twitterData = null;
-      if (twitterHandle) {
-        try {
-          const twitter = new TwitterAPI({ apiKey: process.env.NEXT_PUBLIC_ORIGIN_API_KEY || '' });
-          twitterData = await twitter.fetchUserByUsername(twitterHandle.replace('@', ''));
-        } catch (err) {
-          // Twitter fetch is optional, continue if it fails
-        }
-      }
-      const meta = {
+      
+      console.log('🔍 Calling WritingRegistry.registerProof with:', {
+        hash: contentHash,
         title,
         license,
-        contentHash,
-        content,
-        twitter: twitterData,
         twitterHandle,
-        creator: address, // Explicitly include the connected wallet address as creator
-        owner: address,   // Also set as owner for consistency
-        walletAddress: address, // Additional field for compatibility
-      };
-      const licence = {
-        price: 0n,
-        duration: 86400, // 1 day in seconds
-        royaltyBps: 0,
-        paymentToken: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-      };
-      // Debug logs for troubleshooting
-      console.log('origin:', origin);
-      console.log('authenticated:', authenticated);
-      console.log('walletClient:', walletClient);
-      console.log('file:', content, title);
-      console.log('licence:', licence);
-      // Defensive provider setup for Origin SDK
-      if (isConnected && walletClient && origin && typeof origin.setViemClient === 'function') {
-        try {
-          origin.setViemClient(walletClient);
-        } catch (err) {
-          console.error('Failed to set viem client:', err, walletClient);
-          // No setProvider fallback, just log the error
-        }
-      } else {
-        console.error('Wallet not connected or walletClient missing:', { isConnected, walletClient, origin });
-        toast.error('Wallet is not connected. Please connect your wallet.');
-        setIsWriting(false);
-        return;
-      }
-      // Call mintFile (Origin SDK should use the connected wallet)
-      const fileToMint = new File([content], `${title}.txt`, { type: 'text/plain' });
-      const tx = await origin.mintFile(
-        fileToMint,
-        meta, // Pass meta as the metadata argument
-        licence
-      );
-      if (!tx) {
-        toast.error('Minting failed: No transaction returned. Check your input and authentication.');
-        setIsWriting(false);
-        return;
-      }
-      setTxHash(tx);
-      setIsSuccess(true);
-      toast.success('Content registered successfully!');
+        contractAddress: WRITING_REGISTRY_ADDRESS
+      });
+
+      // Call the WritingRegistry contract's registerProof function
+      writeContract({
+        address: WRITING_REGISTRY_ADDRESS,
+        abi: WRITING_REGISTRY_ABI,
+        functionName: 'registerProof',
+        args: [contentHash, title, license, twitterHandle],
+      });
+      
+      toast.success('Transaction submitted! Check your wallet for confirmation.');
+      
     } catch (error: any) {
       console.error('Error registering proof:', error);
       if (error?.code === 4001) {
-        toast.error('Signature request was rejected.');
+        toast.error('Transaction was rejected.');
       } else if (error?.message) {
         toast.error(error.message);
       } else {
-        toast.error(JSON.stringify(error));
+        toast.error('Failed to register proof. Please try again.');
       }
     } finally {
       setIsWriting(false);
@@ -174,7 +175,7 @@ export function ContentSubmission() {
           <span>Register Your Content</span>
         </CardTitle>
         <CardDescription>
-          Paste your written content to generate a SHA-256 hash and register it on Camp Network
+          Paste your written content to generate a SHA-256 hash and register it on the WritingRegistry smart contract
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -268,23 +269,12 @@ export function ContentSubmission() {
             </div>
           )}
 
-          <Button
-            type="submit"
-            variant="orange"
-            disabled={isWriting || !authenticated || !content.trim() || !title.trim() || !license || chainId !== CAMP_CHAIN_ID}
+          <Button 
+            type="submit" 
+            disabled={!content.trim() || !title.trim() || !license || isWriting || !isConnected || chainId !== CAMP_CHAIN_ID}
             className="w-full"
           >
-            {isWriting ? (
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Registering...</span>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">↑</span>
-                <span>Register Content</span>
-              </div>
-            )}
+            {isWriting ? 'Registering on Blockchain...' : 'Register on WritingRegistry Contract'}
           </Button>
 
           {isSuccess && txHash && (

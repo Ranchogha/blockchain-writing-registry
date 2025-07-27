@@ -1,23 +1,23 @@
-# ✍️ Blockchain-Based Writing Registry (Origin SDK Edition)
+# ✍️ Blockchain-Based Writing Registry (Hybrid Edition)
 
-> Protect your words. Prove your authorship. Powered by blockchain and the Origin SDK.
+> Protect your words. Prove your authorship. Powered by blockchain with Origin SDK UI.
 > 
-> **Latest Update**: Registry viewer search functionality fixed and deployed successfully.
+> **Latest Update**: Hybrid architecture implemented - Origin SDK UI + WritingRegistry smart contract backend.
 
-A decentralized application (dApp) that allows writers and content creators to register proof of authorship for written works on-chain by submitting cryptographic hashes of their content. Built for the Camp Network (BaseCAMP), this platform leverages the [Origin SDK](https://docs.campnetwork.xyz/origin-v1/origin-sdk) for seamless NFT minting, authentication, and social (Twitter) integration.
+A decentralized application (dApp) that allows writers and content creators to register proof of authorship for written works on-chain by submitting cryptographic hashes of their content. Built for the Camp Network (BaseCAMP), this platform combines the **WritingRegistry smart contract** for blockchain transactions with the **Origin SDK** for beautiful UI and content display.
 
 ---
 
 ## 🚀 Features
 
-- ✅ Register a written work as a cryptographic hash (SHA-256)
-- 🧾 Attach metadata (title, license type, optional Twitter handle, and Twitter data)
+- ✅ Register a written work as a cryptographic hash (SHA-256) on WritingRegistry smart contract
+- 🧾 Attach metadata (title, license type, optional Twitter handle)
 - ⛓️ Store and verify on-chain proof of ownership on Camp Network BaseCAMP
-- 🔍 View public registry of previously submitted works
+- 🔍 View public registry with hybrid search (WritingRegistry + Origin SDK)
 - 🛡️ Prevent duplicate registrations
 - 🧠 Future-ready for plagiarism checks, AI attribution, and agent-based licensing
 - 💼 Wallet & social login via Origin SDK (CampProvider, CampModal)
-- 📱 Responsive design with modern UI
+- 📱 Responsive design with modern UI powered by Origin SDK
 - 🔄 Real-time transaction status
 - 📊 Transparent event emission for provenance
 
@@ -28,7 +28,8 @@ A decentralized application (dApp) that allows writers and content creators to r
 | Layer | Technology | Purpose |
 |-------|------------|---------|
 | **Blockchain** | Camp Network BaseCAMP (EVM L1) | Decentralized storage and verification |
-| **NFT Minting** | [Origin SDK](https://docs.campnetwork.xyz/origin-v1/origin-sdk) | NFT minting, authentication, social APIs |
+| **Smart Contract** | WritingRegistry.sol | Content registration and verification |
+| **Frontend UI** | [Origin SDK](https://docs.campnetwork.xyz/origin-v1/origin-sdk) | Beautiful content display and interface |
 | **Frontend** | Next.js 14 (App Router) | Modern React framework |
 | **Styling** | Tailwind CSS + shadcn/ui | Beautiful, responsive UI |
 | **Hashing** | crypto-js | SHA-256 content hashing |
@@ -50,15 +51,27 @@ A decentralized application (dApp) that allows writers and content creators to r
 
 ## 🏗️ Architecture
 
-### Powered by the Origin SDK
+### Hybrid Approach: Best of Both Worlds
+- **WritingRegistry Backend**: All transactions use your smart contract for blockchain verification
+- **Origin SDK UI**: Beautiful content display and interface powered by Origin SDK
+- **Twitter Handle Creator**: Twitter handles are displayed as creators when available
+- **Hybrid Search**: Checks both WritingRegistry contract and Origin SDK for complete data
+- **Best of Both**: Origin's UI + Your smart contract's functionality
+
+### Smart Contract Integration
+- **Content Registration**: Uses `registerProof` function on WritingRegistry.sol
+- **Content Verification**: Uses `getProof` and `isHashRegistered` functions
+- **Blockchain Data**: Direct interaction with your deployed smart contract
+
+### Origin SDK Integration
 - **Authentication**: CampProvider and CampModal handle wallet and social login (Twitter, etc.)
-- **NFT Minting**: Uses `origin.mintFile` from the Origin SDK to mint IP NFTs with writing content and Twitter data in the metadata.
-- **Twitter Integration**: Uses the Origin SDK's TwitterAPI to fetch and store Twitter data for linked accounts.
-- **Registry**: Uses `origin.getOriginUploads()` to fetch and display NFTs, with filtering by content hash or owner address.
+- **Content Display**: Uses Origin SDK for beautiful content rendering and UI
+- **Content Storage**: Uses Origin SDK for content uploads and metadata
+- **Registry Search**: Hybrid search combining blockchain data with Origin content
 
 ### Main Components
-- **ContentSubmission**: Form for registering new content and minting as an NFT
-- **RegistryViewer**: Search and display registered NFTs by hash or by owner
+- **ContentSubmission**: Form for registering new content on WritingRegistry contract
+- **RegistryViewer**: Hybrid search and display (WritingRegistry + Origin SDK)
 - **Header**: CampModal for wallet/social login
 - **Providers**: CampProvider and QueryClientProvider for app context
 
@@ -87,15 +100,118 @@ A decentralized application (dApp) that allows writers and content creators to r
 
 3. **Configure environment**
    ```bash
-   cp .env.example .env.local
+   cp env.example .env.local
    # Add your Origin Client ID and API URLs
    ```
    Example .env.local:
    ```env
-   VITE_ORIGIN_API=https://api.origin.campnetwork.xyz
-   VITE_ORIGIN_CLIENT_ID=your-origin-client-id
+   NEXT_PUBLIC_CONTRACT_ADDRESS=your-deployed-writingregistry-contract-address
+   NEXT_PUBLIC_CAMP_NETWORK_RPC=https://rpc.basecamp.t.raas.gelato.cloud
+   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your-walletconnect-project-id
+   NEXT_PUBLIC_ORIGIN_CLIENT_ID=your-origin-client-id
+   NEXT_PUBLIC_ORIGIN_API_KEY=your-origin-api-key
    NEXT_PUBLIC_SUBGRAPH_URL=https://api.goldsky.com/api/public/project_cmdhxq7767k6a01umch9m1nq0/subgraphs/blockchain-writing-strategy/1.0.0/gn
    ```
 
 4. **Run development server**
+   ```bash
+   npm run dev
    ```
+
+5. **Open your browser**
+   ```
+   http://localhost:3000
+   ```
+
+---
+
+## 📝 Usage
+
+### Registering Content
+1. **Connect your wallet** using the CampModal in the header
+2. **Switch to Camp Network BaseCAMP** (Chain ID: 123420001114)
+3. **Fill out the registration form**:
+   - Paste your written content
+   - Add a title
+   - Select a license type
+   - Optionally add your Twitter handle
+4. **Submit** - This will:
+   - Generate a SHA-256 hash of your content
+   - Call `registerProof` on the WritingRegistry contract
+   - Upload content to Origin SDK for display
+   - Store Twitter data if provided
+
+### Searching Content
+1. **Enter a content hash** (66-character hex string starting with 0x)
+2. **Click Search** - This will:
+   - Check WritingRegistry contract for blockchain verification
+   - Check Origin SDK for content display
+   - Show combined results with Origin's beautiful UI
+3. **View results** with verification status and content preview
+
+---
+
+## 🔧 Smart Contract Functions
+
+### WritingRegistry.sol
+- `registerProof(bytes32 contentHash, string memory title, string memory license, string memory twitterHandle)` - Register new content
+- `getProof(bytes32 contentHash)` - Retrieve proof data
+- `isHashRegistered(bytes32 contentHash)` - Check if hash is registered
+
+### Events
+- `ProofRegistered(bytes32 indexed contentHash, address indexed owner, string title, string license, string twitterHandle, uint256 timestamp)` - Emitted when content is registered
+
+---
+
+## 🚀 Deployment
+
+### Smart Contract Deployment
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+### Frontend Deployment
+1. **Deploy to Vercel**:
+   ```bash
+   npm run build
+   vercel --prod
+   ```
+
+2. **Set environment variables** in Vercel dashboard
+3. **Update contract address** in environment variables
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+
+---
+
+## 🔗 Links
+
+- **Live Demo**: [blockchain-writing-registry.vercel.app](https://blockchain-writing-registry.vercel.app)
+- **Smart Contract**: [WritingRegistry.sol](./WritingRegistry.sol)
+- **Origin SDK Docs**: [docs.campnetwork.xyz/origin-v1/origin-sdk](https://docs.campnetwork.xyz/origin-v1/origin-sdk)
+- **Camp Network**: [campnetwork.xyz](https://campnetwork.xyz)
+
+---
+
+## 🆘 Support
+
+If you encounter any issues:
+1. Check the [Issues](../../issues) page
+2. Review the [DEPLOYMENT.md](./DEPLOYMENT.md) troubleshooting section
+3. Create a new issue with detailed information
+
+---
+
+*Built with ❤️ for the Camp Network community*
