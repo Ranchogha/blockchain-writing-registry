@@ -254,9 +254,9 @@ export function RegistryViewer() {
               }
             }
 
-            // Use actual creator/owner if available
-            const owner = upload.owner || upload.creator || 'Unknown';
-            const creator = upload.creator || upload.owner || 'Unknown';
+            // Use actual creator/owner if available - check multiple possible sources
+            const owner = upload.owner || upload.creator || upload.metadata?.owner || upload.metadata?.creator || upload.metadata?.walletAddress || 'Unknown';
+            const creator = upload.creator || upload.owner || upload.metadata?.creator || upload.metadata?.owner || upload.metadata?.walletAddress || 'Unknown';
 
             // Verify content against blockchain
             const verification = await verifyContent(content, contentHash);
@@ -271,6 +271,8 @@ export function RegistryViewer() {
                 contentHash: contentHash,
                 license: upload.license || upload.metadata?.license || 'All Rights Reserved',
                 twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || twitterHandle || '',
+                creator: upload.metadata?.creator || upload.creator || upload.owner || 'Unknown',
+                owner: upload.metadata?.owner || upload.owner || upload.creator || 'Unknown',
               },
               owner: owner,
               creator: creator,
@@ -310,11 +312,117 @@ export function RegistryViewer() {
         const searchAddress = input.trim().toLowerCase();
         console.log('🔍 Filtering by address:', searchAddress);
         console.log('🔍 Connected address:', address?.toLowerCase());
+        console.log('🔍 Total uploads to filter:', enrichedUploads.length);
+        
+        // First, try to get content directly from blockchain via API
+        try {
+          const response = await fetch(`/api/get-address-content?address=${searchAddress}`);
+          if (response.ok) {
+            const blockchainData = await response.json();
+            console.log('🔍 Blockchain data for address:', blockchainData);
+            
+            if (blockchainData.contentHashes && blockchainData.contentHashes.length > 0) {
+              // We have content hashes from blockchain, now fetch their metadata from Origin SDK
+              const blockchainContent = [];
+              
+              for (const hash of blockchainData.contentHashes) {
+                // Try to get full metadata from Origin SDK if available
+                const originContent = enrichedUploads.find(item => 
+                  (item.metadata?.contentHash || item.hash || '').toLowerCase() === hash.toLowerCase()
+                );
+                
+                if (originContent) {
+                  blockchainContent.push(originContent);
+                } else {
+                  // Create a basic entry from blockchain data
+                  const contentDetail = blockchainData.contentDetails?.find((detail: any) => detail.hash === hash);
+                  if (contentDetail) {
+                    blockchainContent.push({
+                      id: hash,
+                      hash: hash,
+                      metadata: {
+                        title: contentDetail.title,
+                        contentHash: hash,
+                        license: contentDetail.license,
+                        twitterHandle: contentDetail.twitterHandle,
+                        creator: contentDetail.creator,
+                        owner: contentDetail.creator,
+                      },
+                      creator: contentDetail.creator,
+                      owner: contentDetail.creator,
+                      timestamp: contentDetail.timestamp,
+                      verification: {
+                        isHashMatch: true,
+                        isRegisteredOnChain: true,
+                        blockchainData: contentDetail
+                      }
+                    });
+                  }
+                }
+              }
+              
+              if (blockchainContent.length > 0) {
+                setNfts(blockchainContent);
+                setError('');
+                setDebugInfo(null);
+                console.log('🔍 Successfully set NFTs from blockchain:', blockchainContent);
+                return;
+              }
+            }
+          }
+        } catch (error) {
+          console.log('🔍 Blockchain API failed, falling back to Origin SDK:', error);
+        }
+        
+        // Fallback to Origin SDK filtering
+        console.log('🔍 Log all available creator/owner fields for debugging');
+        enrichedUploads.forEach((item, index) => {
+          console.log(`🔍 Item ${index} creator fields:`, {
+            creator: item.creator,
+            owner: item.owner,
+            uploadCreator: item.upload?.creator,
+            uploadOwner: item.upload?.owner,
+            metadataCreator: item.metadata?.creator,
+            metadataOwner: item.metadata?.owner
+          });
+        });
         
         filteredData = enrichedUploads.filter((item: any) => {
-          const itemCreator = (item.creator || item.owner || '').toLowerCase();
-          const itemOwner = (item.owner || item.creator || '').toLowerCase();
-          console.log('🔍 Comparing:', { searchAddress, itemCreator, itemOwner });
+          // Check multiple possible field names for creator/owner
+          const possibleCreators = [
+            item.creator,
+            item.owner,
+            item.upload?.creator,
+            item.upload?.owner,
+            item.metadata?.creator,
+            item.metadata?.owner,
+            item.address,
+            item.wallet
+          ].filter(Boolean); // Remove undefined/null values
+          
+          const possibleOwners = [
+            item.owner,
+            item.creator,
+            item.upload?.owner,
+            item.upload?.creator,
+            item.metadata?.owner,
+            item.metadata?.creator,
+            item.address,
+            item.wallet
+          ].filter(Boolean);
+          
+          const itemCreator = (possibleCreators[0] || '').toLowerCase();
+          const itemOwner = (possibleOwners[0] || '').toLowerCase();
+          
+          console.log('🔍 Comparing:', { 
+            searchAddress, 
+            itemCreator, 
+            itemOwner,
+            possibleCreators,
+            possibleOwners,
+            matches: itemCreator === searchAddress || itemOwner === searchAddress
+          });
+          
           return itemCreator === searchAddress || itemOwner === searchAddress;
         });
         

@@ -14,6 +14,10 @@ contract WritingRegistry {
     mapping(string => Proof) private _proofs;
     // Set to track registered hashes for O(1) lookups
     mapping(string => bool) private _registeredHashes;
+    // Mapping from creator address to array of content hashes
+    mapping(address => string[]) private _creatorContent;
+    // Mapping to track if a hash is already in a creator's array (to avoid duplicates)
+    mapping(address => mapping(string => bool)) private _creatorHashExists;
 
     event ProofRegistered(
         string indexed hash,
@@ -49,6 +53,12 @@ contract WritingRegistry {
             creator: msg.sender
         });
 
+        // Add hash to creator's content array if not already present
+        if (!_creatorHashExists[msg.sender][hash]) {
+            _creatorContent[msg.sender].push(hash);
+            _creatorHashExists[msg.sender][hash] = true;
+        }
+
         emit ProofRegistered(hash, title, license, twitterHandle, block.timestamp, msg.sender);
     }
 
@@ -69,5 +79,23 @@ contract WritingRegistry {
      */
     function isHashRegistered(string calldata hash) external view returns (bool) {
         return _registeredHashes[hash];
+    }
+
+    /**
+     * @dev Get all content hashes registered by a specific creator
+     * @param creator The address of the creator
+     * @return Array of content hashes registered by the creator
+     */
+    function getContentByCreator(address creator) external view returns (string[] memory) {
+        return _creatorContent[creator];
+    }
+
+    /**
+     * @dev Get the count of content hashes registered by a specific creator
+     * @param creator The address of the creator
+     * @return Number of content hashes registered by the creator
+     */
+    function getCreatorContentCount(address creator) external view returns (uint256) {
+        return _creatorContent[creator].length;
     }
 }

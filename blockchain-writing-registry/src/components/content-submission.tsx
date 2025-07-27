@@ -107,6 +107,9 @@ export function ContentSubmission() {
         content,
         twitter: twitterData,
         twitterHandle,
+        creator: address, // Explicitly include the connected wallet address as creator
+        owner: address,   // Also set as owner for consistency
+        walletAddress: address, // Additional field for compatibility
       };
       const licence = {
         price: 0n,
