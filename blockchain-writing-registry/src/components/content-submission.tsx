@@ -45,7 +45,7 @@ export function ContentSubmission() {
   const [twitterHandle, setTwitterHandle] = useState('');
   const [contentHash, setContentHash] = useState('');
   const [txHash, setTxHash] = useState('');
-  const [isWriting, setIsWriting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [preCheckError, setPreCheckError] = useState('');
 
@@ -132,7 +132,7 @@ export function ContentSubmission() {
     }
 
     try {
-      setIsWriting(true);
+      setIsSubmitting(true);
       setIsSuccess(false);
       
       console.log('🔍 Calling WritingRegistry.registerProof with:', {
@@ -163,7 +163,7 @@ export function ContentSubmission() {
         toast.error('Failed to register proof. Please try again.');
       }
     } finally {
-      setIsWriting(false);
+      setIsSubmitting(false);
     }
   };
 
