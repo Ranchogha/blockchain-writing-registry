@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Try to get content hashes for the address
-    let contentHashes: string[] = [];
+    let contentHashes: readonly string[] = [];
     
     try {
       // Check if the contract has a getContentByCreator function
@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
-      contentHashes: contentHashes,
+      contentHashes: Array.from(contentHashes), // Convert readonly array to regular array
       contentDetails: contentDetails,
       address: address,
       totalContent: contentHashes.length
