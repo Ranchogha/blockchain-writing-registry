@@ -6,9 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Search, Hash, Calendar, User, FileText, Database, Zap, Copy } from 'lucide-react';
+import { Search, Hash, Calendar, User, FileText, Database, Zap, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useAccount, useChainId, useSwitchChain, useContractReads } from 'wagmi';
 import { toast } from 'react-hot-toast';
+import CryptoJS from 'crypto-js';
 
 // WritingRegistry ABI for reading data
 const WRITING_REGISTRY_ABI = [
@@ -57,6 +58,25 @@ const WRITING_REGISTRY_ABI = [
     ],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "hash",
+        "type": "string"
+      }
+    ],
+    "name": "isHashRegistered",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   }
 ] as const;
 
@@ -74,6 +94,8 @@ export function RegistryViewer() {
   const [error, setError] = useState('');
   const [searchType, setSearchType] = useState<'address' | 'twitter' | 'hash'>('address');
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [verificationResults, setVerificationResults] = useState<any[]>([]);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   // Wagmi hooks
   const { address, isConnected } = useAccount();
@@ -83,6 +105,47 @@ export function RegistryViewer() {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success('Content hash copied to clipboard!');
+  };
+
+  // Generate hash using the same method as the upload component
+  const generateHash = (content: string) => {
+    if (!content.trim()) return '';
+    const hash = CryptoJS.SHA256(content).toString();
+    return `0x${hash}`;
+  };
+
+  // Verify content against blockchain data
+  const verifyContent = async (content: string, expectedHash: string) => {
+    const actualHash = generateHash(content);
+    const isHashMatch = actualHash.toLowerCase() === expectedHash.toLowerCase();
+    
+    // Check if hash is registered on blockchain
+    let isRegisteredOnChain = false;
+    let blockchainData = null;
+    let verificationError = null;
+    
+    try {
+      const response = await fetch(`/api/verify-hash?hash=${expectedHash}`);
+      if (response.ok) {
+        const data = await response.json();
+        isRegisteredOnChain = data.isRegistered;
+        blockchainData = data.blockchainData;
+      } else {
+        verificationError = `API error: ${response.status}`;
+      }
+    } catch (error) {
+      console.error('Error verifying hash on blockchain:', error);
+      verificationError = 'Network error during verification';
+    }
+
+    return {
+      isHashMatch,
+      isRegisteredOnChain,
+      actualHash,
+      expectedHash,
+      blockchainData,
+      verificationError
+    };
   };
 
   const handleSearch = async () => {
@@ -95,6 +158,7 @@ export function RegistryViewer() {
     setError('');
     setNfts([]);
     setDebugInfo(null);
+    setVerificationResults([]);
 
     try {
       console.log('🔍 Starting search for:', input.trim());
@@ -141,6 +205,7 @@ export function RegistryViewer() {
 
       // Fetch full content and metadata for each upload
       let enrichedUploads = [];
+      let verificationResults = [];
       console.log('🔍 Starting to fetch content for', uploads.length, 'uploads');
       
       for (let i = 0; i < uploads.length; i++) {
@@ -156,6 +221,10 @@ export function RegistryViewer() {
             const content = await response.text();
             console.log('🔍 Fetched content length:', content.length);
             console.log('🔍 Content preview:', content.substring(0, 100) + '...');
+
+            // Generate hash using the same method as upload
+            const contentHash = generateHash(content);
+            console.log('🔍 Generated hash:', contentHash);
 
             // Parse title (first non-empty line or line starting with Title:)
             let title = upload.title || upload.metadata?.title || 'Untitled';
@@ -189,6 +258,9 @@ export function RegistryViewer() {
             const owner = upload.owner || upload.creator || 'Unknown';
             const creator = upload.creator || upload.owner || 'Unknown';
 
+            // Verify content against blockchain
+            const verification = await verifyContent(content, contentHash);
+
             // Create enriched upload with metadata
             const enrichedUpload = {
               ...upload,
@@ -196,15 +268,17 @@ export function RegistryViewer() {
               metadata: {
                 title: title,
                 content: content,
-                contentHash: upload.hash || upload.contentHash || `0x${Buffer.from(content).toString('hex').substring(0, 64)}`,
+                contentHash: contentHash,
                 license: upload.license || upload.metadata?.license || 'All Rights Reserved',
                 twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || twitterHandle || '',
               },
               owner: owner,
               creator: creator,
-              timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000)
+              timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000),
+              verification: verification
             };
             enrichedUploads.push(enrichedUpload);
+            verificationResults.push(verification);
             console.log('🔍 Successfully enriched upload:', enrichedUpload);
           } else {
             console.error('🔍 Failed to fetch content - HTTP error:', response.status, response.statusText);
@@ -218,6 +292,16 @@ export function RegistryViewer() {
       }
       
       console.log('🔍 Enriched uploads:', enrichedUploads);
+      setVerificationResults(verificationResults);
+      
+      // Add debug info to help troubleshoot
+      if (enrichedUploads.length > 0) {
+        console.log('🔍 Sample enriched upload structure:', enrichedUploads[0]);
+        console.log('🔍 Available fields:', Object.keys(enrichedUploads[0]));
+        console.log('🔍 Creator field:', enrichedUploads[0].creator);
+        console.log('🔍 Owner field:', enrichedUploads[0].owner);
+        console.log('🔍 Metadata:', enrichedUploads[0].metadata);
+      }
       
       // Filter data based on search criteria
       let filteredData = enrichedUploads;
@@ -225,9 +309,16 @@ export function RegistryViewer() {
       if (searchType === 'address') {
         const searchAddress = input.trim().toLowerCase();
         console.log('🔍 Filtering by address:', searchAddress);
-        filteredData = enrichedUploads.filter((item: any) => 
-          item.creator.toLowerCase() === searchAddress || item.owner.toLowerCase() === searchAddress
-        );
+        console.log('🔍 Connected address:', address?.toLowerCase());
+        
+        filteredData = enrichedUploads.filter((item: any) => {
+          const itemCreator = (item.creator || item.owner || '').toLowerCase();
+          const itemOwner = (item.owner || item.creator || '').toLowerCase();
+          console.log('🔍 Comparing:', { searchAddress, itemCreator, itemOwner });
+          return itemCreator === searchAddress || itemOwner === searchAddress;
+        });
+        
+        console.log('🔍 Address filter result:', filteredData.length, 'items');
         
         // If searching for a different address than the connected user
         if (searchAddress !== address?.toLowerCase() && filteredData.length === 0) {
@@ -237,9 +328,14 @@ export function RegistryViewer() {
       } else if (searchType === 'twitter') {
         const handle = input.trim().replace('@', '').toLowerCase();
         console.log('🔍 Filtering by Twitter handle:', handle);
-        filteredData = enrichedUploads.filter((item: any) => 
-          item.metadata?.twitterHandle?.replace('@', '').toLowerCase() === handle
-        );
+        
+        filteredData = enrichedUploads.filter((item: any) => {
+          const itemHandle = (item.metadata?.twitterHandle || item.twitterHandle || '').replace('@', '').toLowerCase();
+          console.log('🔍 Comparing Twitter handles:', { handle, itemHandle });
+          return itemHandle === handle;
+        });
+        
+        console.log('🔍 Twitter filter result:', filteredData.length, 'items');
         
         if (filteredData.length === 0) {
           setError(`No content found for Twitter handle: ${input.trim()}. This handle may not have registered any content, or the content may belong to a different wallet.`);
@@ -248,9 +344,14 @@ export function RegistryViewer() {
       } else if (searchType === 'hash') {
         const searchHash = input.trim().toLowerCase();
         console.log('🔍 Filtering by hash:', searchHash);
-        filteredData = enrichedUploads.filter((item: any) => 
-          item.metadata?.contentHash?.toLowerCase() === searchHash
-        );
+        
+        filteredData = enrichedUploads.filter((item: any) => {
+          const itemHash = (item.metadata?.contentHash || item.hash || '').toLowerCase();
+          console.log('🔍 Comparing hashes:', { searchHash, itemHash });
+          return itemHash === searchHash;
+        });
+        
+        console.log('🔍 Hash filter result:', filteredData.length, 'items');
         
         if (filteredData.length === 0) {
           setError(`No content found for hash: ${input.trim()}. This content may not be registered, or it may belong to a different wallet.`);
@@ -258,12 +359,14 @@ export function RegistryViewer() {
         }
       }
 
-      console.log('🔍 Filtered data:', filteredData);
+      console.log('🔍 Final filtered data:', filteredData);
+      console.log('🔍 Filtered data length:', filteredData.length);
 
       if (filteredData.length > 0) {
         setNfts(filteredData);
         setError(''); // Clear any previous errors
         setDebugInfo(null);
+        console.log('🔍 Successfully set NFTs:', filteredData);
       } else {
         // No results found - show appropriate message based on search type
         if (searchType === 'address') {
@@ -436,6 +539,21 @@ export function RegistryViewer() {
                       <div className="flex items-center space-x-2">
                         <FileText className="h-5 w-5" />
                         <span>{nft.metadata?.title || 'Untitled'}</span>
+                        {/* Verification Status */}
+                        {nft.verification && (
+                          <div className="flex items-center space-x-1">
+                            {nft.verification.isHashMatch ? (
+                              <Check className="h-4 w-4 text-green-500" title="Hash verified" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-red-500" title="Hash mismatch" />
+                            )}
+                            {nft.verification.isRegisteredOnChain ? (
+                              <Check className="h-4 w-4 text-green-500" title="Registered on blockchain" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-yellow-500" title="Not found on blockchain" />
+                            )}
+                          </div>
+                        )}
                       </div>
                       <Button
                         variant="outline"
@@ -496,6 +614,39 @@ export function RegistryViewer() {
                       </div>
                     )}
 
+                    {/* Verification Details */}
+                    {nft.verification && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Verification Status</Label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                          <div className="flex items-center space-x-2">
+                            {nft.verification.isHashMatch ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-red-500" />
+                            )}
+                            <span>Hash Match: {nft.verification.isHashMatch ? 'Yes' : 'No'}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {nft.verification.isRegisteredOnChain ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                            )}
+                            <span>On Blockchain: {nft.verification.isRegisteredOnChain ? 'Yes' : 'No'}</span>
+                          </div>
+                        </div>
+                        {nft.verification.blockchainData && (
+                          <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                            <strong>Blockchain Data:</strong>
+                            <pre className="mt-1 overflow-x-auto">
+                              {JSON.stringify(nft.verification.blockchainData, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {nft.metadata?.content && (
                       <div className="space-y-2">
                         <Label className="text-sm font-medium">Content Preview</Label>
@@ -529,6 +680,7 @@ export function RegistryViewer() {
               <br />• <strong>Twitter Handle:</strong> Shows content with that specific Twitter handle
               <br />• <strong>Content Hash:</strong> Shows exact content match (66-character hex string)
               <br />• <strong>Origin SDK:</strong> Fetches content from IPFS URLs and processes metadata
+              <br />• <strong>Verification:</strong> Compares content hash with blockchain data for authenticity
             </p>
           </div>
         </div>
