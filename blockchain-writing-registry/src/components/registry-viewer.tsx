@@ -110,7 +110,7 @@ export function RegistryViewer() {
   // Performance optimization: Memoize the search hash
   const searchHash = useMemo(() => input.trim().toLowerCase(), [input]);
   
-  // Ultra-fast blockchain search
+  // Enhanced blockchain search using the search API
   const fastSearch = useCallback(async (hash: string) => {
     if (!hash || hash.length !== 66) return;
     
@@ -120,14 +120,14 @@ export function RegistryViewer() {
     
     try {
       const startTime = Date.now();
-      const response = await fetch(`/api/fast-search?hash=${hash}`);
+      const response = await fetch(`/api/search?hash=${hash}`);
       const data = await response.json();
       const searchTime = Date.now() - startTime;
       
-      console.log(`🔍 Ultra-fast search completed in ${searchTime}ms`);
+      console.log(`🔍 Enhanced search completed in ${searchTime}ms`);
       
       if (data.found) {
-        // Create a standardized result format
+        // Create a standardized result format with Twitter handle as creator
         const result = {
           id: data.data.hash,
           hash: data.data.hash,
@@ -136,11 +136,13 @@ export function RegistryViewer() {
             contentHash: data.data.hash,
             license: data.data.license,
             twitterHandle: data.data.twitterHandle,
-            creator: data.data.creator,
+            creator: data.data.creator, // This will be the Twitter handle if available
             owner: data.data.creator,
+            walletAddress: data.data.walletAddress,
           },
-          creator: data.data.creator,
+          creator: data.data.creator, // Twitter handle as creator
           owner: data.data.creator,
+          walletAddress: data.data.walletAddress,
           timestamp: data.data.timestamp,
           verification: {
             isHashMatch: true,
@@ -151,12 +153,12 @@ export function RegistryViewer() {
         };
         
         setNfts([result]);
-        console.log('🔍 Ultra-fast result:', result);
+        console.log('🔍 Enhanced search result:', result);
       } else {
         setError(`No content found for hash: ${hash}. This content may not be registered.`);
       }
     } catch (error) {
-      console.error('❌ Ultra-fast search error:', error);
+      console.error('❌ Enhanced search error:', error);
       setError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
@@ -238,7 +240,137 @@ export function RegistryViewer() {
       console.log('🔍 Starting search for:', input.trim());
       console.log('🔍 Search type:', searchType);
 
-      // Use Origin SDK to fetch uploads
+      // For hash searches, check both WritingRegistry contract AND Origin SDK
+      if (searchType === 'hash' && input.trim().startsWith('0x') && input.trim().length === 66) {
+        console.log('🔍 Using WritingRegistry contract + Origin SDK search for hash:', input.trim());
+        
+        let blockchainData = null;
+        let originData = null;
+        
+        // Check WritingRegistry contract first
+        try {
+          const startTime = Date.now();
+          const response = await fetch(`/api/search?hash=${input.trim()}`);
+          const data = await response.json();
+          const searchTime = Date.now() - startTime;
+          
+          console.log(`🔍 WritingRegistry search completed in ${searchTime}ms`);
+          
+          if (data.found) {
+            blockchainData = data.data;
+            console.log('🔍 Found on blockchain:', blockchainData);
+          } else {
+            console.log('🔍 Not found on blockchain');
+          }
+        } catch (error) {
+          console.error('❌ WritingRegistry search error:', error);
+          // Continue with Origin SDK even if blockchain search fails
+        }
+        
+        // Check Origin SDK
+        if (origin) {
+          try {
+            console.log('🔍 Checking Origin SDK for content...');
+            const uploads = await origin.getOriginUploads();
+            
+            if (uploads && uploads.length > 0) {
+              // Find matching content in Origin SDK
+              for (const upload of uploads) {
+                try {
+                  const response = await fetch(upload.url);
+                  if (response.ok) {
+                    const content = await response.text();
+                    const contentHash = generateHash(content);
+                    
+                    if (contentHash.toLowerCase() === input.trim().toLowerCase()) {
+                      console.log('🔍 Found matching content in Origin SDK:', upload);
+                      
+                      // Parse metadata from content
+                      let title = upload.title || upload.metadata?.title || 'Untitled';
+                      let twitterHandle = upload.twitterHandle || upload.metadata?.twitterHandle || '';
+                      
+                      const lines = content.split(/\r?\n/);
+                      for (let line of lines) {
+                        const trimmed = line.trim();
+                        if (!twitterHandle) {
+                          const match = trimmed.match(/(?:Twitter:)?\s*(@[\w_]+)/i);
+                          if (match) twitterHandle = match[1];
+                        }
+                        if (title === 'Untitled' && trimmed) {
+                          const titleMatch = trimmed.match(/^Title:\s*(.+)$/i);
+                          if (titleMatch) {
+                            title = titleMatch[1];
+                            continue;
+                          }
+                          title = trimmed;
+                        }
+                        if (title !== 'Untitled' && twitterHandle) break;
+                      }
+                      
+                      const walletAddress = upload.owner || upload.creator || upload.metadata?.owner || upload.metadata?.creator || upload.metadata?.walletAddress || 'Unknown';
+                      const creator = twitterHandle || walletAddress;
+                      
+                      originData = {
+                        content: content,
+                        title: title,
+                        twitterHandle: twitterHandle,
+                        creator: creator,
+                        walletAddress: walletAddress,
+                        license: upload.license || upload.metadata?.license || 'All Rights Reserved',
+                        timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000),
+                        url: upload.url
+                      };
+                      break;
+                    }
+                  }
+                } catch (e) {
+                  console.error('🔍 Error fetching content from Origin SDK:', e);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('❌ Origin SDK search error:', e);
+          }
+        }
+        
+        // Combine results from both sources
+        if (blockchainData || originData) {
+          const result = {
+            id: input.trim(),
+            hash: input.trim(),
+            metadata: {
+              title: originData?.title || blockchainData?.title || 'Unknown',
+              contentHash: input.trim(),
+              license: originData?.license || blockchainData?.license || 'Unknown',
+              twitterHandle: originData?.twitterHandle || blockchainData?.twitterHandle || '',
+              creator: originData?.creator || blockchainData?.creator || 'Unknown',
+              owner: originData?.creator || blockchainData?.creator || 'Unknown',
+              walletAddress: originData?.walletAddress || blockchainData?.walletAddress || 'Unknown',
+              content: originData?.content || null,
+            },
+            creator: originData?.creator || blockchainData?.creator || 'Unknown',
+            owner: originData?.creator || blockchainData?.creator || 'Unknown',
+            walletAddress: originData?.walletAddress || blockchainData?.walletAddress || 'Unknown',
+            timestamp: originData?.timestamp || blockchainData?.timestamp || '0',
+            verification: {
+              isHashMatch: true,
+              isRegisteredOnChain: !!blockchainData,
+              blockchainData: blockchainData,
+              originData: originData,
+              searchTime: 'Combined search'
+            }
+          };
+          
+          setNfts([result]);
+          console.log('🔍 Combined result:', result);
+          return;
+        } else {
+          setError(`No content found for hash: ${input.trim()}. This content may not be registered on blockchain or Origin SDK.`);
+          return;
+        }
+      }
+
+      // For non-hash searches, use Origin SDK
       console.log('🔍 Using Origin SDK to fetch uploads...');
       
       if (!origin) {
@@ -328,9 +460,9 @@ export function RegistryViewer() {
               }
             }
 
-            // Use actual creator/owner if available - check multiple possible sources
-            const owner = upload.owner || upload.creator || upload.metadata?.owner || upload.metadata?.creator || upload.metadata?.walletAddress || 'Unknown';
-            const creator = upload.creator || upload.owner || upload.metadata?.creator || upload.metadata?.owner || upload.metadata?.walletAddress || 'Unknown';
+            // Use Twitter handle as creator if available, otherwise use wallet address
+            const walletAddress = upload.owner || upload.creator || upload.metadata?.owner || upload.metadata?.creator || upload.metadata?.walletAddress || 'Unknown';
+            const creator = twitterHandle || walletAddress;
 
             // Verify content against blockchain
             const verification = await verifyContent(content, contentHash);
@@ -344,12 +476,14 @@ export function RegistryViewer() {
                 content: content,
                 contentHash: contentHash,
                 license: upload.license || upload.metadata?.license || 'All Rights Reserved',
-                twitterHandle: upload.twitterHandle || upload.metadata?.twitterHandle || twitterHandle || '',
-                creator: upload.metadata?.creator || upload.creator || upload.owner || 'Unknown',
-                owner: upload.metadata?.owner || upload.owner || upload.creator || 'Unknown',
+                twitterHandle: twitterHandle,
+                creator: creator,
+                owner: creator,
+                walletAddress: walletAddress,
               },
-              owner: owner,
+              owner: creator,
               creator: creator,
+              walletAddress: walletAddress,
               timestamp: upload.timestamp || upload.createdAt || Math.floor(Date.now() / 1000),
               verification: verification
             };
@@ -426,16 +560,7 @@ export function RegistryViewer() {
 
   const handleInputChange = (value: string) => {
     setInput(value);
-    
-    // Auto-search when valid hash is entered
-    if (value.startsWith('0x') && value.length === 66) {
-      setSearchType('hash');
-      fastSearch(value);
-    } else {
-      // Clear results if input is invalid
-      setNfts([]);
-      setError('');
-    }
+    // Remove auto-search - only search when user clicks the search button
   };
 
   return (
@@ -446,7 +571,7 @@ export function RegistryViewer() {
           <span>Registry Viewer</span>
         </CardTitle>
         <CardDescription>
-          Enter a content hash (66 chars) for exact content match.
+          Enter a content hash (66 chars) for exact content match. Twitter handles are displayed as creators when available.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -610,9 +735,22 @@ export function RegistryViewer() {
                         <Label className="text-sm font-medium">Creator</Label>
                         <div className="flex items-center space-x-2">
                           <User className="h-4 w-4 text-gray-500" />
-                          <code className="text-sm font-mono text-gray-700">
-                            {nft.creator && nft.creator !== 'Unknown' ? nft.creator : 'Wallet address not available'}
-                          </code>
+                          <div className="flex flex-col">
+                            {nft.creator && nft.creator !== 'Unknown' && !nft.creator.startsWith('0x') ? (
+                              <span className="text-sm text-blue-600 font-medium">
+                                @{nft.creator}
+                              </span>
+                            ) : (
+                              <code className="text-sm font-mono text-gray-700">
+                                {nft.walletAddress || nft.creator || 'Wallet address not available'}
+                              </code>
+                            )}
+                            {nft.walletAddress && nft.walletAddress !== '0x0000000000000000000000000000000000000000' && (
+                              <span className="text-xs text-gray-500">
+                                Wallet: {nft.walletAddress}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -722,10 +860,11 @@ export function RegistryViewer() {
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md text-blue-700">
             <p className="text-sm">
               <strong>How it works:</strong> 
-              <br />• <strong>Content Hash Search:</strong> Enter a 66-character hex string to find exact content match with full metadata and verification
+              <br />• <strong>WritingRegistry Search:</strong> Enter a 66-character hex string to search the blockchain registry directly
+              <br />• <strong>Twitter Handle Creator:</strong> Twitter handles are displayed as creators when available from the blockchain
               <br />• <strong>Copy & Search:</strong> Use the Copy button next to any content hash, then paste it in the search field above
-              <br />• <strong>Verification:</strong> System automatically verifies content integrity against blockchain data
-              <br />• <strong>Origin SDK:</strong> Fetches content from IPFS and processes metadata automatically
+              <br />• <strong>Blockchain Verification:</strong> System automatically verifies content against the WritingRegistry smart contract
+              <br />• <strong>Origin SDK Fallback:</strong> For non-hash searches, falls back to IPFS content via Origin SDK
             </p>
           </div>
         </div>
